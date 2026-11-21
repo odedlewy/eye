@@ -31,7 +31,7 @@
   .joininfo { text-align:right; }
   .joininfo .lbl { color:var(--muted); font-size:1.1rem; }
   .code { font-size:5rem; font-weight:800; letter-spacing:.15em; direction:ltr; color:var(--accent); line-height:1.1; }
-  .url { direction:ltr; font-size:1rem; color:#ddd; word-break:break-all; max-width:420px; text-align:left; }
+  .url { direction:ltr; font-size:1.9rem; font-weight:800; color:#fff; word-break:break-all; max-width:420px; text-align:left; }
   .players { display:flex; flex-wrap:wrap; gap:.5rem; justify-content:center; max-width:1100px; min-height:3rem; }
   .chip { background:#3a3558; padding:.4em .9em; border-radius:999px; font-size:1.2rem; font-weight:600; animation:pop .3s; }
   .chip.off { opacity:.4; }
@@ -231,7 +231,9 @@
 'use strict';
 const PREFIX = 'hushshishi-v1-';
 const params = new URLSearchParams(location.search);
-const IS_PLAYER = params.has('join');
+// מסך המורה נפתח רק מהכתובת המיוחדת שבקיצור הדרך, או מקובץ שעל המחשב. כל כתובת אחרת פותחת את מסך התלמיד
+const HOST_KEY = 'moreh-k7q2x9';
+const IS_PLAYER = !(params.has(HOST_KEY) || location.protocol === 'file:');
 const LOCAL = params.has('local');   // מצב בדיקה על מחשב אחד
 const $ = id => document.getElementById(id);
 const show = (group, id) => { document.querySelectorAll(group).forEach(e => e.classList.add('hidden')); $(id).classList.remove('hidden'); };
@@ -371,7 +373,7 @@ function startHost() {
     $('h-code').textContent = H.code;
     const url = location.origin + location.pathname + '?join=' + H.code + (LOCAL ? '&local' : '');
     H.joinUrl = url;
-    $('h-url').textContent = location.origin + location.pathname + '?join';
+    $('h-url').textContent = (location.host + location.pathname).replace(/\/$/, '');
     $('qr').innerHTML = '';
     if (typeof QRCode !== 'undefined') new QRCode($('qr'), { text:url, width:260, height:260, correctLevel: QRCode.CorrectLevel.M });
     else $('qr').textContent = 'אין קוד לסריקה – השתמשו בכתובת';
