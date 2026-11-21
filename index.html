@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>מבדק החוש השישי – כמה טובות העיניים שלכם?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root { --bg:#14121f; --panel:#221f33; --accent:#ffd23f; --ok:#2ecc71; --bad:#e74c3c; --txt:#fff; --muted:#a9a6c0; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--txt); font-family:'Rubik',system-ui,Arial,sans-serif; }
+  body { overflow:hidden; }
+  button { font-family:inherit; cursor:pointer; border:0; }
+  .hidden { display:none !important; }
+  .btn { background:var(--accent); color:#1b1830; font-weight:800; font-size:1.3rem; padding:.7em 1.6em; border-radius:14px; box-shadow:0 5px 0 #b8901a; }
+  .btn:active { transform:translateY(3px); box-shadow:0 2px 0 #b8901a; }
+  .btn.ghost { background:transparent; color:var(--muted); box-shadow:none; border:2px solid #3b3755; font-size:1rem; padding:.5em 1.1em; }
+  .btn:disabled { opacity:.4; cursor:default; }
+
+  /* ---------- מסך המורה ---------- */
+  #host { position:fixed; inset:0; display:flex; flex-direction:column; }
+  .screen { flex:1; display:flex; flex-direction:column; min-height:0; }
+  .lobby { align-items:center; justify-content:center; gap:1.2rem; padding:2rem; text-align:center; }
+  .lobby h1 { font-size:clamp(2rem,4vw,3.6rem); margin:0; color:var(--accent); }
+  .lobby h2 { font-weight:400; margin:0; color:var(--muted); font-size:clamp(1rem,1.6vw,1.5rem); }
+  .joinbox { display:flex; gap:2.5rem; align-items:center; background:var(--panel); padding:1.5rem 2rem; border-radius:24px; }
+  #qr { background:#fff; padding:12px; border-radius:14px; width:284px; height:284px; display:flex; align-items:center; justify-content:center; }
+  .joininfo { text-align:right; }
+  .joininfo .lbl { color:var(--muted); font-size:1.1rem; }
+  .code { font-size:5rem; font-weight:800; letter-spacing:.15em; direction:ltr; color:var(--accent); line-height:1.1; }
+  .url { direction:ltr; font-size:1rem; color:#ddd; word-break:break-all; max-width:420px; text-align:left; }
+  .players { display:flex; flex-wrap:wrap; gap:.5rem; justify-content:center; max-width:1100px; min-height:3rem; }
+  .chip { background:#3a3558; padding:.4em .9em; border-radius:999px; font-size:1.2rem; font-weight:600; animation:pop .3s; }
+  .chip.off { opacity:.4; }
+  @keyframes pop { from { transform:scale(.4); } to { transform:scale(1); } }
+  .settings { display:flex; gap:1.5rem; color:var(--muted); align-items:center; flex-wrap:wrap; justify-content:center; }
+  .settings select { font-family:inherit; font-size:1rem; padding:.3em; border-radius:8px; }
+  .warn { background:#5a1e2a; color:#ffd7dc; padding:.8em 1.2em; border-radius:12px; max-width:900px; }
+  .status { color:var(--muted); font-size:1rem; }
+
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding:.6rem 1.4rem; background:#0c0b14; font-size:1.4rem; gap:1rem; }
+  .topbar .stage { color:var(--accent); font-weight:800; }
+  .timerwrap { flex:1; height:12px; background:#2c2944; border-radius:6px; overflow:hidden; margin:0 1rem; }
+  #timerbar { height:100%; background:var(--accent); width:100%; }
+  .strips { flex:1; display:flex; direction:rtl; gap:8px; background:#fff; padding:8px; min-height:0; }
+  .strip { flex:1; position:relative; display:flex; align-items:flex-end; justify-content:center; transition:filter .4s; }
+  .strip .num { font-size:clamp(1.5rem,3vw,3rem); font-weight:800; color:#fff; text-shadow:0 0 6px rgba(0,0,0,.7); margin-bottom:.5rem; }
+  .strip .inner { position:absolute; left:20%; right:20%; top:12%; bottom:18%; }
+  .strip.correct { outline:12px solid var(--accent); outline-offset:-12px; box-shadow:inset 0 0 0 16px #000; }
+  .strip.correct::after { content:'✓'; position:absolute; top:38%; font-size:7rem; font-weight:800; color:var(--accent); text-shadow:0 0 14px #000; }
+  .strips.illusion-reveal .strip { background:#cfcfcf !important; filter:none !important; }
+
+  .bottom { display:flex; align-items:center; gap:1.5rem; padding:1rem 1.4rem; background:#0c0b14; }
+  .hist { flex:1; display:flex; direction:rtl; gap:8px; align-items:flex-end; height:110px; }
+  .hist .col { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hist .bar { width:70%; background:#6a6590; border-radius:6px 6px 0 0; min-height:3px; transition:height .5s; }
+  .hist .bar.good { background:var(--ok); }
+  .hist .cnt { font-weight:800; }
+  .hist .n { color:var(--muted); font-size:.9rem; }
+  .revealinfo { width:30%; font-size:1.25rem; line-height:1.5; }
+  .revealinfo b { color:var(--accent); }
+
+  .center { align-items:center; justify-content:center; text-align:center; gap:1.2rem; padding:2rem; }
+  .bigtitle { font-size:clamp(3rem,8vw,7rem); font-weight:800; margin:0; }
+  .subtitle { font-size:clamp(1.3rem,3vw,2.4rem); color:var(--muted); margin:0; }
+  .board { width:min(800px,90vw); display:flex; flex-direction:column; gap:.6rem; }
+  .row { display:flex; justify-content:space-between; background:var(--panel); padding:.7em 1.2em; border-radius:12px; font-size:1.6rem; font-weight:600; }
+  .row .sc { color:var(--accent); direction:ltr; }
+  .podium { display:flex; align-items:flex-end; gap:1rem; direction:ltr; }
+  .pod { width:190px; text-align:center; }
+  .pod .block { border-radius:12px 12px 0 0; display:flex; align-items:flex-start; justify-content:center; font-size:3rem; font-weight:800; padding-top:.3em; }
+  .pod .nm { font-size:1.5rem; font-weight:800; margin-bottom:.3em; direction:rtl; }
+  .pod .ps { color:var(--muted); margin-bottom:.4em; }
+  table.stats { border-collapse:collapse; font-size:1.15rem; }
+  table.stats td, table.stats th { padding:.45em 1em; border-bottom:1px solid #35314d; }
+  table.stats th { color:var(--muted); font-weight:600; }
+  .endgrid { display:flex; gap:3rem; align-items:flex-start; flex-wrap:wrap; justify-content:center; }
+  .controls { display:flex; gap:1rem; justify-content:center; padding:.8rem; }
+
+  /* ---------- טלפון התלמיד ---------- */
+  #player { position:fixed; inset:0; display:flex; flex-direction:column; padding:1rem; padding-bottom:max(1rem, env(safe-area-inset-bottom)); }
+  .pscreen { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:1rem; }
+  .pscreen input { font-family:inherit; font-size:1.5rem; padding:.6em; border-radius:12px; border:0; width:min(320px,85vw); text-align:center; }
+  .pscreen h1 { margin:0; color:var(--accent); font-size:1.8rem; }
+  .pscreen p { margin:0; color:var(--muted); font-size:1.15rem; }
+  .phead { display:flex; justify-content:space-between; width:100%; font-size:1.2rem; font-weight:600; }
+  .ptimer { color:var(--accent); font-weight:800; }
+  .grid { direction:rtl; display:grid; grid-template-columns:repeat(4,1fr); gap:10px; width:100%; flex:1; max-height:70vh; }
+  .grid button { background:#3a3558; color:#fff; font-size:2.6rem; font-weight:800; border-radius:16px; box-shadow:0 5px 0 #24203a; }
+  .grid button:active { transform:translateY(3px); box-shadow:0 2px 0 #24203a; }
+  .res { font-size:5rem; }
+  .pts { font-size:2.2rem; font-weight:800; direction:ltr; }
+  #player.ok { background:#16733f; }
+  #player.bad { background:#8e2a22; }
+  #player.trick { background:#5b3a99; }
+  .pname { position:absolute; bottom:.6rem; left:0; right:0; text-align:center; color:rgba(255,255,255,.55); font-size:.95rem; }
+  .err { color:#ff9b9b; min-height:1.4em; }
+</style>
+</head>
+<body>
+
+<!-- ======================= מסך המורה ======================= -->
+<div id="host" class="hidden">
+  <div id="h-lobby" class="screen lobby">
+    <h1>👁️ כמה טובות העיניים שלכם?</h1>
+    <h2>מבדק החוש השישי · מצאו את הפס השונה</h2>
+    <div id="h-filewarn" class="warn hidden">
+      הדף נפתח מקובץ שעל המחשב, ולכן הטלפונים לא יוכלו להיכנס דרך הקוד.
+      כדי לשחק עם הכיתה יש להעלות את הקובץ לאתר, לפי ההוראות שקיבלת.
+    </div>
+    <div class="joinbox">
+      <div id="qr">טוען...</div>
+      <div class="joininfo">
+        <div class="lbl">סרקו את הקוד בטלפון, או היכנסו לכתובת והקלידו את המספר:</div>
+        <div class="code" id="h-code">····</div>
+        <div class="url" id="h-url"></div>
+        <div class="status" id="h-status">מתחבר לשרת...</div>
+      </div>
+    </div>
+    <div class="players" id="h-players"></div>
+    <div class="settings">
+      <label>שאלות בכל שלב
+        <select id="set-per"><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+      </label>
+      <label>זמן לשאלה
+        <select id="set-dur"><option value="10">עשר שניות</option><option value="15" selected>חמש עשרה שניות</option><option value="20">עשרים שניות</option><option value="30">שלושים שניות</option></select>
+      </label>
+      <label><input type="checkbox" id="set-bonus" checked> שלב הפתעה בסוף</label>
+    </div>
+    <div style="display:flex; gap:1rem; align-items:center;">
+      <button class="btn" id="h-start">מתחילים! ▶</button>
+      <button class="btn ghost" id="h-testphone">פתיחת טלפון לבדיקה בלשונית חדשה</button>
+    </div>
+  </div>
+
+  <div id="h-intro" class="screen center hidden">
+    <p class="subtitle" id="h-intro-sub"></p>
+    <h1 class="bigtitle" id="h-intro-title"></h1>
+    <p class="subtitle" id="h-intro-desc"></p>
+    <button class="btn" id="h-intro-go">לשאלה ▶</button>
+  </div>
+
+  <div id="h-q" class="screen hidden">
+    <div class="topbar">
+      <span class="stage" id="h-q-stage"></span>
+      <div class="timerwrap"><div id="timerbar"></div></div>
+      <span id="h-q-count"></span>
+      <span id="h-q-num"></span>
+    </div>
+    <div class="strips" id="h-strips"></div>
+    <div class="bottom hidden" id="h-bottom">
+      <div class="revealinfo" id="h-revealinfo"></div>
+      <div class="hist" id="h-hist"></div>
+      <button class="btn" id="h-toboard">טבלה ▶</button>
+    </div>
+    <div class="bottom" id="h-qctrl">
+      <div class="status" style="flex:1">שאלו את עצמכם: איזה פס שונה מכל השאר? ענו בטלפון.</div>
+      <button class="btn ghost" id="h-skip">לחשוף עכשיו</button>
+    </div>
+  </div>
+
+  <div id="h-board" class="screen center hidden">
+    <h1 class="subtitle">טבלת המובילים</h1>
+    <div class="board" id="h-boardlist"></div>
+    <button class="btn" id="h-next">השאלה הבאה ▶</button>
+  </div>
+
+  <div id="h-end" class="screen center hidden" style="overflow:auto; justify-content:flex-start;">
+    <h1 class="subtitle" style="margin-top:1rem">🏆 סוף המבדק</h1>
+    <div class="podium" id="h-podium"></div>
+    <div class="endgrid">
+      <div>
+        <h3>הכיתה שלנו מול מה שהסרטון טען</h3>
+        <table class="stats" id="h-stagestats"></table>
+      </div>
+      <div>
+        <h3>באיזה סוג הבדל הכיתה הכי חדה?</h3>
+        <table class="stats" id="h-typestats"></table>
+        <p id="h-trickstat" style="max-width:420px; font-size:1.15rem; color:var(--muted)"></p>
+      </div>
+    </div>
+    <div class="controls"><button class="btn" id="h-again">משחק חדש ↻</button></div>
+  </div>
+</div>
+
+<!-- ======================= טלפון התלמיד ======================= -->
+<div id="player" class="hidden">
+  <div id="p-join" class="pscreen">
+    <h1>👁️ מבדק החוש השישי</h1>
+    <p>מספר המשחק שמופיע על המסך</p>
+    <input id="p-code" inputmode="numeric" maxlength="6" placeholder="מספר המשחק">
+    <p>הכינוי שלך</p>
+    <input id="p-name" maxlength="14" placeholder="כינוי">
+    <button class="btn" id="p-go">הצטרפות</button>
+    <div class="err" id="p-err"></div>
+  </div>
+  <div id="p-wait" class="pscreen hidden">
+    <div class="res">👀</div>
+    <h1 id="p-wait-title">נכנסת!</h1>
+    <p id="p-wait-msg">הסתכלו על המסך הגדול. השאלה תופיע כאן בקרוב.</p>
+  </div>
+  <div id="p-q" class="pscreen hidden">
+    <div class="phead"><span id="p-qnum"></span><span class="ptimer" id="p-timer"></span></div>
+    <p>איזה פס שונה? לחצו על המספר שלו</p>
+    <div class="grid" id="p-grid"></div>
+  </div>
+  <div id="p-sent" class="pscreen hidden">
+    <div class="res">⏳</div>
+    <h1>התשובה נשלחה</h1>
+    <p>מחכים לשאר הכיתה...</p>
+  </div>
+  <div id="p-res" class="pscreen hidden">
+    <div class="res" id="p-res-icon"></div>
+    <h1 id="p-res-title" style="color:#fff"></h1>
+    <div class="pts" id="p-res-pts"></div>
+    <p id="p-res-rank" style="color:#fff"></p>
+  </div>
+  <div id="p-end" class="pscreen hidden">
+    <div class="res">🏁</div>
+    <h1 id="p-end-title"></h1>
+    <p id="p-end-msg" style="color:#fff; font-size:1.4rem"></p>
+  </div>
+  <div class="pname" id="p-namelbl"></div>
+</div>
+
+<script>
+'use strict';
+const PREFIX = 'hushshishi-v1-';
+const params = new URLSearchParams(location.search);
+const IS_PLAYER = params.has('join');
+const LOCAL = params.has('local');   // מצב בדיקה על מחשב אחד
+const $ = id => document.getElementById(id);
+const show = (group, id) => { document.querySelectorAll(group).forEach(e => e.classList.add('hidden')); $(id).classList.remove('hidden'); };
+
+/* ================= שכבת חיבור ================= */
+const ICE = { config: { iceServers: [ { urls:'stun:stun.l.google.com:19302' }, { urls:'stun:stun1.l.google.com:19302' } ] } };
+
+function makeHostTransport(code, handlers) {
+  // handlers: onReady(), onError(msg), onConn(conn) ; conn: {send, onData, onClose}
+  if (LOCAL) {
+    const bc = new BroadcastChannel('ss-' + code);
+    const conns = {};
+    bc.onmessage = ev => {
+      const m = ev.data; if (!m || m.to !== 'host') return;
+      if (m.kind === 'hello') {
+        if (!conns[m.from]) {
+          const c = { _d:null, _c:null, send: o => bc.postMessage({ to:m.from, kind:'msg', payload:o }), onData(f){ this._d=f; }, onClose(f){ this._c=f; } };
+          conns[m.from] = c; handlers.onConn(c);
+        }
+        bc.postMessage({ to:m.from, kind:'welcome' });
+      } else if (m.kind === 'msg' && conns[m.from] && conns[m.from]._d) conns[m.from]._d(m.payload);
+      else if (m.kind === 'bye' && conns[m.from]) { conns[m.from]._c && conns[m.from]._c(); delete conns[m.from]; }
+    };
+    setTimeout(handlers.onReady, 50);
+    return { close(){ bc.close(); } };
+  }
+  if (typeof Peer === 'undefined') { handlers.onError('לא הצלחתי לטעון את רכיב החיבור. בדקו שיש חיבור לאינטרנט.'); return null; }
+  const peer = new Peer(PREFIX + code, ICE);
+  peer.on('open', () => handlers.onReady());
+  peer.on('error', e => handlers.onError(e.type === 'unavailable-id' ? 'taken' : 'שגיאת חיבור: ' + e.type));
+  peer.on('disconnected', () => { try { peer.reconnect(); } catch(_){} });
+  peer.on('connection', dc => {
+    const c = { _d:null, _c:null, send: o => { try { dc.open && dc.send(o); } catch(_){} }, onData(f){ this._d=f; }, onClose(f){ this._c=f; } };
+    dc.on('open', () => handlers.onConn(c));
+    dc.on('data', d => c._d && c._d(d));
+    dc.on('close', () => c._c && c._c());
+    dc.on('error', () => c._c && c._c());
+  });
+  return { close(){ peer.destroy(); } };
+}
+
+function makePlayerTransport(code, handlers) {
+  // handlers: onOpen(), onData(o), onClose(), onError(msg)
+  if (LOCAL) {
+    const me = 'p' + Math.random().toString(36).slice(2, 9);
+    const bc = new BroadcastChannel('ss-' + code);
+    let open = false;
+    bc.onmessage = ev => {
+      const m = ev.data; if (!m || m.to !== me) return;
+      if (m.kind === 'welcome' && !open) { open = true; handlers.onOpen(); }
+      else if (m.kind === 'msg') handlers.onData(m.payload);
+    };
+    const hello = () => { if (!open) { bc.postMessage({ to:'host', from:me, kind:'hello' }); setTimeout(hello, 500); } };
+    hello();
+    addEventListener('beforeunload', () => bc.postMessage({ to:'host', from:me, kind:'bye' }));
+    return { send: o => bc.postMessage({ to:'host', from:me, kind:'msg', payload:o }), close(){ bc.close(); } };
+  }
+  if (typeof Peer === 'undefined') { handlers.onError('לא הצלחתי לטעון את רכיב החיבור. בדקו שיש אינטרנט.'); return null; }
+  const peer = new Peer(ICE);
+  let dc = null;
+  peer.on('open', () => {
+    dc = peer.connect(PREFIX + code, { reliable:true });
+    dc.on('open', handlers.onOpen);
+    dc.on('data', handlers.onData);
+    dc.on('close', handlers.onClose);
+    dc.on('error', handlers.onClose);
+  });
+  peer.on('error', e => handlers.onError(e.type === 'peer-unavailable' ? 'לא מצאתי משחק עם המספר הזה' : 'שגיאת חיבור: ' + e.type));
+  return { send: o => { try { dc && dc.open && dc.send(o); } catch(_){} }, close(){ peer.destroy(); } };
+}
+
+/* ================= צבעים ================= */
+function oklchToRgb(L, C, h) {
+  const a = C * Math.cos(h * Math.PI / 180), b = C * Math.sin(h * Math.PI / 180);
+  const l_ = L + 0.3963377774*a + 0.2158037573*b;
+  const m_ = L - 0.1055613458*a - 0.0638541728*b;
+  const s_ = L - 0.0894841775*a - 1.2914855480*b;
+  const l = l_**3, m = m_**3, s = s_**3;
+  return [ 4.0767416621*l - 3.3077115913*m + 0.2309699292*s,
+          -1.2684380046*l + 2.6097574011*m - 0.3413193965*s,
+          -0.0041960863*l - 0.7034186147*m + 1.7076147010*s ];
+}
+const inGamut = rgb => rgb.every(v => v >= -0.0005 && v <= 1.0005);
+function toCss(rgb) {
+  const enc = v => { v = Math.min(1, Math.max(0, v)); v = v <= 0.0031308 ? 12.92*v : 1.055*Math.pow(v, 1/2.4) - 0.055; return Math.round(v*255); };
+  return 'rgb(' + rgb.map(enc).join(',') + ')';
+}
+// גודל ההבדל בכל שלב, במרחק צבע תפיסתי
+const STAGE_DE = [0.07, 0.04, 0.022, 0.012];
+const STAGES = [
+  { title:'שלב 1', level:'קל', desc:'נתחיל בחימום. רוב האנשים יעברו את זה בקלות.' },
+  { title:'שלב 2', level:'בינוני', desc:'ההבדלים מתחילים להצטמצם...' },
+  { title:'שלב 3', level:'קשה', desc:'כאן כבר צריך עיניים טובות. ומסך טוב.' },
+  { title:'שלב 4', level:'קשה מאוד', desc:'רק מעטים יעברו את השלב הזה.' },
+  { title:'שלב הפתעה', level:'בונוס', desc:'שאלה אחרונה. הסתכלו טוב!' },
+];
+const TYPE_NAME = { L:'בהירות', C:'רוויה (עוצמת הצבע)', H:'גוון' };
+const VIDEO_CLAIM = { 0:'97%', 2:'30%', 3:'8%' };
+const N = 8;
+
+function makeColorQuestion(stage, type, avoidIdx) {
+  const dE = STAGE_DE[stage];
+  for (let tries = 0; tries < 500; tries++) {
+    const h = Math.random() * 360, L = 0.52 + Math.random() * 0.28, C = 0.09 + Math.random() * 0.08;
+    const sign = Math.random() < 0.5 ? -1 : 1;
+    let o;
+    if (type === 'L') o = [L + sign*dE, C, h];
+    else if (type === 'C') o = [L, Math.max(0.02, C + sign*dE), h];
+    else o = [L, C, h + sign * 2 * Math.asin(Math.min(1, dE / (2*C))) * 180 / Math.PI];
+    const b = oklchToRgb(L, C, h), r = oklchToRgb(...o);
+    if (inGamut(b) && inGamut(r)) {
+      let odd; do { odd = Math.floor(Math.random() * N); } while (odd === avoidIdx);
+      return { stage, type, odd, base: toCss(b), oddColor: toCss(r) };
+    }
+  }
+  return makeColorQuestion(stage, 'L', avoidIdx);
+}
+function buildQuestions(perStage, bonus) {
+  const qs = []; let last = -1;
+  for (let s = 0; s < 4; s++) {
+    const types = []; while (types.length < perStage) types.push(...['L','C','H'].sort(() => Math.random() - .5));
+    for (let k = 0; k < perStage; k++) { const q = makeColorQuestion(s, types[k], last); last = q.odd; qs.push(q); }
+  }
+  if (bonus) qs.push({ stage:4, type:'T', trick:true, darkIdx: Math.floor(Math.random()*N), odd:-1 });
+  return qs;
+}
+
+/* ================= מורה ================= */
+function startHost() {
+  $('host').classList.remove('hidden');
+  const H = { players:new Map(), phase:'lobby', qi:-1, qs:[], answers:[], qStart:0, dur:15, timer:null, transport:null, code:'' };
+  if (location.protocol === 'file:' && !LOCAL) $('h-filewarn').classList.remove('hidden');
+
+  function newCode() { return String(1000 + Math.floor(Math.random() * 9000)); }
+  function connect() {
+    H.code = newCode();
+    $('h-code').textContent = H.code;
+    const url = location.origin + location.pathname + '?join=' + H.code + (LOCAL ? '&local' : '');
+    H.joinUrl = url;
+    $('h-url').textContent = location.origin + location.pathname + '?join';
+    $('qr').innerHTML = '';
+    if (typeof QRCode !== 'undefined') new QRCode($('qr'), { text:url, width:260, height:260, correctLevel: QRCode.CorrectLevel.M });
+    else $('qr').textContent = 'אין קוד לסריקה – השתמשו בכתובת';
+    H.transport = makeHostTransport(H.code, {
+      onReady: () => { $('h-status').textContent = '✅ מוכן. מחכים לשחקנים.'; },
+      onError: msg => {
+        if (msg === 'taken') { H.transport && H.transport.close(); connect(); return; }
+        $('h-status').textContent = '⚠️ ' + msg + ' ייתכן שהרשת חוסמת את החיבור.';
+      },
+      onConn: conn => {
+        let pid = null;
+        conn.onData(m => {
+          if (!m || typeof m !== 'object') return;
+          if (m.t === 'join') {
+            pid = String(m.pid || '').slice(0, 40); if (!pid) return;
+            const name = String(m.name || 'שחקן').slice(0, 14);
+            let p = H.players.get(pid);
+            if (!p) { p = { pid, name, score:0 }; H.players.set(pid, p); }
+            p.name = name; p.conn = conn; p.online = true;
+            renderPlayers(); sendState(p);
+          } else if (m.t === 'a' && pid) onAnswer(pid, m);
+        });
+        conn.onClose(() => { const p = pid && H.players.get(pid); if (p && p.conn === conn) { p.online = false; renderPlayers(); } });
+      }
+    });
+  }
+  function renderPlayers() {
+    const el = $('h-players'); el.innerHTML = '';
+    const list = [...H.players.values()];
+    list.forEach(p => { const c = document.createElement('span'); c.className = 'chip' + (p.online ? '' : ' off'); c.textContent = p.name; el.appendChild(c); });
+    if (!list.length) { const s = document.createElement('span'); s.className = 'status'; s.textContent = 'עדיין אין שחקנים'; el.appendChild(s); }
+    updateCount();
+  }
+  const online = () => [...H.players.values()].filter(p => p.online);
+  const send = (p, o) => p.conn && p.online && p.conn.send(o);
+  const ranked = () => [...H.players.values()].sort((a, b) => b.score - a.score);
+  const rankOf = pid => ranked().findIndex(p => p.pid === pid) + 1;
+
+  function sendState(p) {
+    if (H.phase === 'question' && !H.answers[H.qi].has(p.pid)) {
+      const left = Math.max(1, H.dur - (performance.now() - H.qStart) / 1000);
+      send(p, { t:'q', i:H.qi, n:N, dur:left, num:H.qi + 1, total:H.qs.length });
+    } else if (H.phase === 'end') send(p, { t:'end', rank:rankOf(p.pid), score:p.score, n:H.players.size });
+    else send(p, { t:'wait', name:p.name, lobby: H.phase === 'lobby' });
+  }
+
+  function startGame() {
+    H.qs = buildQuestions(+$('set-per').value, $('set-bonus').checked);
+    H.dur = +$('set-dur').value;
+    H.answers = H.qs.map(() => new Map());
+    H.players.forEach(p => p.score = 0);
+    H.qi = -1; next();
+  }
+  function next() {
+    H.qi++;
+    if (H.qi >= H.qs.length) return endGame();
+    const q = H.qs[H.qi], prev = H.qs[H.qi - 1];
+    if (!prev || prev.stage !== q.stage) {
+      H.phase = 'intro';
+      const st = STAGES[q.stage];
+      $('h-intro-sub').textContent = st.level;
+      $('h-intro-title').textContent = st.title;
+      $('h-intro-desc').textContent = st.desc;
+      show('#host .screen', 'h-intro');
+      online().forEach(p => send(p, { t:'wait', name:p.name, msg: st.title + ' · ' + st.level }));
+    } else showQuestion();
+  }
+  function showQuestion() {
+    H.phase = 'question';
+    const q = H.qs[H.qi];
+    show('#host .screen', 'h-q');
+    $('h-bottom').classList.add('hidden'); $('h-qctrl').classList.remove('hidden');
+    $('h-q-stage').textContent = STAGES[q.stage].title + ' · ' + STAGES[q.stage].level;
+    $('h-q-num').textContent = 'שאלה ' + (H.qi + 1) + ' מתוך ' + H.qs.length;
+    const strips = $('h-strips'); strips.className = 'strips'; strips.innerHTML = '';
+    for (let i = 0; i < N; i++) {
+      const d = document.createElement('div'); d.className = 'strip';
+      if (q.trick) {
+        d.style.background = i === q.darkIdx ? '#161616' : '#cfcfcf';
+        const inner = document.createElement('div'); inner.className = 'inner'; inner.style.background = '#8a8a8a'; d.appendChild(inner);
+      } else d.style.background = i === q.odd ? q.oddColor : q.base;
+      const n = document.createElement('div'); n.className = 'num'; n.textContent = i + 1; d.appendChild(n);
+      strips.appendChild(d);
+    }
+    H.qStart = performance.now();
+    online().forEach(p => send(p, { t:'q', i:H.qi, n:N, dur:H.dur, num:H.qi + 1, total:H.qs.length }));
+    updateCount();
+    clearInterval(H.timer);
+    H.timer = setInterval(() => {
+      const f = 1 - (performance.now() - H.qStart) / (H.dur * 1000);
+      $('timerbar').style.width = Math.max(0, f * 100) + '%';
+      if (f <= 0) reveal();
+    }, 100);
+  }
+  function updateCount() {
+    if (H.phase !== 'question') return;
+    $('h-q-count').textContent = 'ענו ' + H.answers[H.qi].size + ' מתוך ' + online().length;
+  }
+  function onAnswer(pid, m) {
+    if (H.phase !== 'question' || m.i !== H.qi) return;
+    const A = H.answers[H.qi]; if (A.has(pid)) return;
+    const c = +m.c; if (!(c >= 0 && c < N)) return;
+    A.set(pid, { c, ms: performance.now() - H.qStart });
+    send(H.players.get(pid), { t:'ack' });
+    updateCount();
+    if (online().every(p => A.has(p.pid))) setTimeout(reveal, 400);
+  }
+  function reveal() {
+    if (H.phase !== 'question') return;
+    H.phase = 'reveal'; clearInterval(H.timer);
+    const q = H.qs[H.qi], A = H.answers[H.qi];
+    const counts = Array(N).fill(0);
+    A.forEach((a, pid) => {
+      counts[a.c]++;
+      const ok = !q.trick && a.c === q.odd;
+      a.ok = ok;
+      a.pts = ok ? Math.round(1000 * (1 - Math.min(1, a.ms / (H.dur * 1000)) / 2)) : 0;
+      const p = H.players.get(pid); if (p) p.score += a.pts;
+    });
+    H.players.forEach(p => {
+      const a = A.get(p.pid);
+      send(p, { t:'res', ok: a ? a.ok : false, none: !a, trick: !!q.trick, pts: a ? a.pts : 0, score:p.score, rank:rankOf(p.pid), n:H.players.size });
+    });
+    const strips = $('h-strips');
+    if (q.trick) strips.classList.add('illusion-reveal');
+    else { strips.classList.add('revealed'); strips.children[q.odd].classList.add('correct'); }
+    const hist = $('h-hist'); hist.innerHTML = '';
+    const max = Math.max(1, ...counts);
+    counts.forEach((c, i) => {
+      const col = document.createElement('div'); col.className = 'col';
+      col.innerHTML = '<div class="cnt">' + c + '</div><div class="bar' + (i === q.odd ? ' good' : '') + '" style="height:' + (c / max * 70) + '%"></div><div class="n">' + (i + 1) + '</div>';
+      hist.appendChild(col);
+    });
+    const okCount = [...A.values()].filter(a => a.ok).length;
+    const pct = A.size ? Math.round(okCount / A.size * 100) : 0;
+    if (q.trick) {
+      const fooled = counts[q.darkIdx];
+      $('h-revealinfo').innerHTML = '<b>תפסנו אתכם!</b> כל הפסים זהים לגמרי.<br>רק הרקע של פס ' + (q.darkIdx + 1) + ' היה כהה, והמוח "הבהיר" את הפס.<br>מספר התלמידים שבחרו בו: <b>' + fooled + '</b>';
+    } else {
+      $('h-revealinfo').innerHTML = 'התשובה: <b>פס ' + (q.odd + 1) + '</b><br>ההבדל היה ב<b>' + TYPE_NAME[q.type] + '</b><br>צדקו: <b>' + pct + '%</b> (' + okCount + ' מתוך ' + A.size + ')';
+    }
+    $('h-qctrl').classList.add('hidden'); $('h-bottom').classList.remove('hidden');
+    $('h-toboard').textContent = H.qi === H.qs.length - 1 ? 'לתוצאות ▶' : 'טבלה ▶';
+  }
+  function showBoard() {
+    if (H.qi === H.qs.length - 1) return endGame();
+    H.phase = 'board';
+    const el = $('h-boardlist'); el.innerHTML = '';
+    ranked().slice(0, 5).forEach((p, i) => {
+      const r = document.createElement('div'); r.className = 'row';
+      const nm = document.createElement('span'); nm.textContent = (i + 1) + '. ' + p.name;
+      const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = p.score;
+      r.append(nm, sc); el.appendChild(r);
+    });
+    if (!H.players.size) el.innerHTML = '<p class="status">אין שחקנים מחוברים</p>';
+    show('#host .screen', 'h-board');
+  }
+  function endGame() {
+    H.phase = 'end'; clearInterval(H.timer);
+    const r = ranked();
+    const pod = $('h-podium'); pod.innerHTML = '';
+    const order = [1, 0, 2], heights = [220, 160, 120], colors = ['#ffd23f', '#c0c0c0', '#cd7f32'];
+    order.forEach(k => {
+      const p = r[k]; if (!p) return;
+      const d = document.createElement('div'); d.className = 'pod';
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = p.name;
+      const ps = document.createElement('div'); ps.className = 'ps'; ps.textContent = p.score + ' נקודות';
+      const b = document.createElement('div'); b.className = 'block'; b.style.height = heights[k] + 'px'; b.style.background = colors[k]; b.style.color = '#1b1830'; b.textContent = k + 1;
+      d.append(nm, ps, b); pod.appendChild(d);
+    });
+    // סטטיסטיקה לפי שלב
+    let html = '<tr><th>שלב</th><th>תשובות נכונות</th><th>עברו את כל השלב</th><th>הסרטון טען</th></tr>';
+    for (let s = 0; s < 4; s++) {
+      const idx = H.qs.map((q, i) => q.stage === s ? i : -1).filter(i => i >= 0);
+      let tot = 0, ok = 0; const per = new Map();
+      idx.forEach(i => H.answers[i].forEach((a, pid) => {
+        tot++; if (a.ok) ok++;
+        const e = per.get(pid) || { n:0, ok:0 }; e.n++; if (a.ok) e.ok++; per.set(pid, e);
+      }));
+      let passed = 0; per.forEach(e => { if (e.n === idx.length && e.ok === idx.length) passed++; });
+      const pctOk = tot ? Math.round(ok / tot * 100) + '%' : '—';
+      const pctPass = per.size ? Math.round(passed / per.size * 100) + '%' : '—';
+      html += '<tr><td>' + STAGES[s].title + ' · ' + STAGES[s].level + '</td><td>' + pctOk + '</td><td>' + pctPass + '</td><td>' + (VIDEO_CLAIM[s] || '—') + '</td></tr>';
+    }
+    $('h-stagestats').innerHTML = html;
+    let th = '<tr><th>סוג ההבדל</th><th>תשובות נכונות</th></tr>';
+    ['L', 'C', 'H'].forEach(t => {
+      let tot = 0, ok = 0;
+      H.qs.forEach((q, i) => { if (q.type === t) H.answers[i].forEach(a => { tot++; if (a.ok) ok++; }); });
+      th += '<tr><td>' + TYPE_NAME[t] + '</td><td>' + (tot ? Math.round(ok / tot * 100) + '%' : '—') + '</td></tr>';
+    });
+    $('h-typestats').innerHTML = th;
+    const ti = H.qs.findIndex(q => q.trick);
+    if (ti >= 0 && H.answers[ti].size) {
+      const A = H.answers[ti]; let f = 0; A.forEach(a => { if (a.c === H.qs[ti].darkIdx) f++; });
+      $('h-trickstat').textContent = 'בשלב ההפתעה ' + Math.round(f / A.size * 100) + '% מהכיתה בחרו בפס שעל הרקע הכהה, למרות שכל הפסים היו זהים.';
+    } else $('h-trickstat').textContent = '';
+    H.players.forEach(p => send(p, { t:'end', rank:rankOf(p.pid), score:p.score, n:H.players.size }));
+    show('#host .screen', 'h-end');
+  }
+  function backToLobby() {
+    H.phase = 'lobby'; H.players.forEach(p => p.score = 0);
+    online().forEach(p => send(p, { t:'wait', name:p.name, lobby:true }));
+    show('#host .screen', 'h-lobby'); renderPlayers();
+  }
+
+  $('h-start').onclick = startGame;
+  $('h-intro-go').onclick = showQuestion;
+  $('h-skip').onclick = reveal;
+  $('h-toboard').onclick = showBoard;
+  $('h-next').onclick = next;
+  $('h-again').onclick = backToLobby;
+  $('h-testphone').onclick = () => { const a = document.createElement('a'); a.href = H.joinUrl; a.target = '_blank'; a.rel = 'noopener'; a.click(); };
+  addEventListener('keydown', e => {
+    if (e.code !== 'Space' && e.code !== 'Enter') return;
+    if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+    e.preventDefault();
+    const map = { lobby:'h-start', intro:'h-intro-go', question:'h-skip', reveal:'h-toboard', board:'h-next', end:'h-again' };
+    const b = $(map[H.phase]); b && b.click();
+  });
+  renderPlayers();
+  connect();
+}
+
+/* ================= תלמיד ================= */
+function startPlayer() {
+  $('player').classList.remove('hidden');
+  const store = { get(k){ try { return localStorage.getItem(k); } catch(_) { return null; } }, set(k, v){ try { localStorage.setItem(k, v); } catch(_){} } };
+  let pid = store.get('ss-pid'); if (!pid) { pid = 'u' + Math.random().toString(36).slice(2, 11); store.set('ss-pid', pid); }
+  $('p-code').value = params.get('join') || '';
+  $('p-name').value = store.get('ss-name') || '';
+  const P = { t:null, code:'', name:'', curQ:-1, tick:null, joined:false };
+  const pshow = id => { $('player').className = ''; show('#player .pscreen', id); };
+
+  const grid = $('p-grid');
+  for (let i = 0; i < N; i++) {
+    const b = document.createElement('button'); b.textContent = i + 1;
+    b.onclick = () => { if (P.curQ < 0) return; P.t.send({ t:'a', i:P.curQ, c:i }); P.curQ = -1; clearInterval(P.tick); pshow('p-sent'); };
+    grid.appendChild(b);
+  }
+
+  function join() {
+    const code = $('p-code').value.trim(), name = $('p-name').value.trim();
+    if (!/^\d{4,6}$/.test(code)) { $('p-err').textContent = 'הקלידו את המספר שמופיע על המסך'; return; }
+    if (!name) { $('p-err').textContent = 'בחרו כינוי'; return; }
+    store.set('ss-name', name);
+    P.code = code; P.name = name; $('p-namelbl').textContent = name;
+    $('p-err').textContent = 'מתחבר...'; $('p-go').disabled = true;
+    connect();
+  }
+  function connect() {
+    P.t && P.t.close && P.t.close();
+    P.t = makePlayerTransport(P.code, {
+      onOpen: () => { P.joined = true; P.t.send({ t:'join', pid, name:P.name }); },
+      onData: onMsg,
+      onClose: () => { if (!P.joined) return; $('p-wait-title').textContent = 'החיבור נותק'; $('p-wait-msg').textContent = 'מנסה להתחבר שוב...'; pshow('p-wait'); setTimeout(connect, 2000); },
+      onError: msg => {
+        if (P.joined) { setTimeout(connect, 2500); return; }
+        $('p-err').textContent = msg; $('p-go').disabled = false;
+      }
+    });
+  }
+  function onMsg(m) {
+    if (!m || typeof m !== 'object') return;
+    if (m.t === 'wait') {
+      $('p-wait-title').textContent = m.msg || (m.lobby ? 'נכנסת, ' + P.name + '!' : 'מוכנים?');
+      $('p-wait-msg').textContent = 'הסתכלו על המסך הגדול. השאלה תופיע כאן בקרוב.';
+      pshow('p-wait');
+    } else if (m.t === 'q') {
+      P.curQ = m.i;
+      $('p-qnum').textContent = 'שאלה ' + m.num + ' מתוך ' + m.total;
+      const end = Date.now() + m.dur * 1000;
+      clearInterval(P.tick);
+      const upd = () => { const s = Math.max(0, Math.ceil((end - Date.now()) / 1000)); $('p-timer').textContent = s; if (s <= 0) clearInterval(P.tick); };
+      upd(); P.tick = setInterval(upd, 250);
+      pshow('p-q');
+    } else if (m.t === 'ack') {
+      pshow('p-sent');
+    } else if (m.t === 'res') {
+      P.curQ = -1; clearInterval(P.tick);
+      pshow('p-res');
+      if (m.trick) { $('player').className = 'trick'; $('p-res-icon').textContent = '🤯'; $('p-res-title').textContent = 'תפסנו אתכם! כל הפסים היו זהים'; $('p-res-pts').textContent = ''; }
+      else if (m.ok) { $('player').className = 'ok'; $('p-res-icon').textContent = '✅'; $('p-res-title').textContent = 'נכון!'; $('p-res-pts').textContent = '+' + m.pts; }
+      else { $('player').className = 'bad'; $('p-res-icon').textContent = m.none ? '⌛' : '❌'; $('p-res-title').textContent = m.none ? 'הזמן נגמר' : 'לא הפעם'; $('p-res-pts').textContent = '+0'; }
+      $('p-res-rank').textContent = 'מקום ' + m.rank + ' מתוך ' + m.n + ' · סך הכול ' + m.score + ' נקודות';
+    } else if (m.t === 'end') {
+      P.curQ = -1; clearInterval(P.tick);
+      pshow('p-end');
+      $('p-end-title').textContent = m.rank === 1 ? '🥇 מקום ראשון!' : 'סיימת במקום ' + m.rank;
+      $('p-end-msg').textContent = 'מתוך ' + m.n + ' שחקנים · ' + m.score + ' נקודות';
+    }
+  }
+  $('p-go').onclick = join;
+  $('p-name').addEventListener('keydown', e => { if (e.key === 'Enter') join(); });
+}
+
+IS_PLAYER ? startPlayer() : startHost();
+</script>
+</body>
+</html>
