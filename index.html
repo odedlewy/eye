@@ -109,7 +109,7 @@
     <h2>מבדק החוש השישי · מצאו את הפס השונה</h2>
     <div id="h-filewarn" class="warn hidden">
       הדף נפתח מקובץ שעל המחשב, ולכן הטלפונים לא יוכלו להיכנס דרך הקוד.
-      כדי לשחק עם הכיתה יש להעלות את הקובץ לאתר, לפי ההוראות שקיבלת.
+      כדי לשחק עם הכיתה יש להעלות את הקובץ לאתר. כדי לנסות לבד, לחצו על "ניסיון לבד".
     </div>
     <div class="joinbox">
       <div id="qr">טוען...</div>
@@ -132,6 +132,7 @@
     </div>
     <div style="display:flex; gap:1rem; align-items:center;">
       <button class="btn" id="h-start">מתחילים! ▶</button>
+      <button class="btn ghost" id="h-solo">ניסיון לבד: לוחצים על הפסים במסך</button>
       <button class="btn ghost" id="h-testphone">פתיחת טלפון לבדיקה בלשונית חדשה</button>
     </div>
   </div>
@@ -362,7 +363,7 @@ function buildQuestions(perStage, bonus) {
 function startHost() {
   $('host').classList.remove('hidden');
   const H = { players:new Map(), phase:'lobby', qi:-1, qs:[], answers:[], qStart:0, dur:15, timer:null, transport:null, code:'' };
-  if (location.protocol === 'file:' && !LOCAL) $('h-filewarn').classList.remove('hidden');
+  if (location.protocol === 'file:' && !LOCAL) { $('h-filewarn').classList.remove('hidden'); $('h-testphone').classList.add('hidden'); }
 
   function newCode() { return String(1000 + Math.floor(Math.random() * 9000)); }
   function connect() {
@@ -452,6 +453,7 @@ function startHost() {
         d.style.background = i === q.darkIdx ? '#161616' : '#cfcfcf';
         const inner = document.createElement('div'); inner.className = 'inner'; inner.style.background = '#8a8a8a'; d.appendChild(inner);
       } else d.style.background = i === q.odd ? q.oddColor : q.base;
+      if (H.players.has('solo')) { d.style.cursor = 'pointer'; d.onclick = () => onAnswer('solo', { i:H.qi, c:i }); }
       const n = document.createElement('div'); n.className = 'num'; n.textContent = i + 1; d.appendChild(n);
       strips.appendChild(d);
     }
@@ -572,12 +574,16 @@ function startHost() {
     show('#host .screen', 'h-end');
   }
   function backToLobby() {
-    H.phase = 'lobby'; H.players.forEach(p => p.score = 0);
+    H.phase = 'lobby'; H.players.delete('solo'); H.players.forEach(p => p.score = 0);
     online().forEach(p => send(p, { t:'wait', name:p.name, lobby:true }));
     show('#host .screen', 'h-lobby'); renderPlayers();
   }
 
   $('h-start').onclick = startGame;
+  $('h-solo').onclick = () => {
+    H.players.set('solo', { pid:'solo', name:'אני', score:0, online:true, conn:{ send(){} } });
+    renderPlayers(); startGame();
+  };
   $('h-intro-go').onclick = showQuestion;
   $('h-skip').onclick = reveal;
   $('h-toboard').onclick = showBoard;
