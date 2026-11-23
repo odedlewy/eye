@@ -69,6 +69,20 @@
   .bigtitle { font-size:clamp(3rem,8vw,7rem); font-weight:800; margin:0; }
   .subtitle { font-size:clamp(1.3rem,3vw,2.4rem); color:var(--muted); margin:0; }
   .board { width:min(800px,90vw); display:flex; flex-direction:column; gap:.6rem; }
+  .fact { max-width:900px; font-size:clamp(1.1rem,2vw,1.6rem); background:var(--panel); padding:1em 1.4em; border-radius:16px; line-height:1.5; margin:0; }
+  .fact b { color:var(--accent); }
+  .stagewrap { display:flex; gap:3rem; align-items:flex-start; flex-wrap:wrap; justify-content:center; }
+  .stagebox { width:min(420px,90vw); text-align:right; background:var(--panel); padding:1.2rem 1.5rem; border-radius:18px; }
+  .stagebox .big { font-size:3.2rem; font-weight:800; color:var(--accent); line-height:1.1; }
+  .stagebox .lbl { color:var(--muted); font-size:1.2rem; margin-bottom:1rem; }
+  .dist { display:flex; flex-direction:column; gap:.4rem; font-size:1.1rem; }
+  .dist .dr { display:flex; align-items:center; gap:.6rem; }
+  .dist .dk { width:6.5rem; color:var(--muted); }
+  .dist .db { height:1.1rem; background:#6a6590; border-radius:4px; min-width:3px; }
+  .dist .db.good { background:var(--ok); }
+  .board.anim { position:relative; display:block; width:min(640px,90vw); height:330px; }
+  .board.anim .row { position:absolute; left:0; right:0; height:56px; align-items:center; transition:top 1.1s cubic-bezier(.3,1.25,.5,1), opacity .6s; }
+  .row .up { color:var(--ok); font-size:1.1rem; margin:0 .7rem; }
   .row { display:flex; justify-content:space-between; background:var(--panel); padding:.7em 1.2em; border-radius:12px; font-size:1.6rem; font-weight:600; }
   .row .sc { color:var(--accent); direction:ltr; }
   .podium { display:flex; align-items:flex-end; gap:1rem; direction:ltr; }
@@ -125,7 +139,7 @@
     <div class="players" id="h-players"></div>
     <div class="settings">
       <label>שאלות בכל שלב
-        <select id="set-per"><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+        <select id="set-per"><option>2</option><option>3</option><option selected>4</option><option>5</option></select>
       </label>
       <label>זמן לשאלה
         <select id="set-dur"><option value="10">עשר שניות</option><option value="15" selected>חמש עשרה שניות</option><option value="20">עשרים שניות</option><option value="30">שלושים שניות</option></select>
@@ -143,6 +157,7 @@
     <p class="subtitle" id="h-intro-sub"></p>
     <h1 class="bigtitle" id="h-intro-title"></h1>
     <p class="subtitle" id="h-intro-desc"></p>
+    <p class="fact" id="h-intro-fact"></p>
     <button class="btn" id="h-intro-go">לשאלה ▶</button>
   </div>
 
@@ -167,9 +182,12 @@
   </div>
 
   <div id="h-board" class="screen center hidden">
-    <h1 class="subtitle">טבלת המובילים</h1>
-    <div class="board" id="h-boardlist"></div>
-    <button class="btn" id="h-next">השאלה הבאה ▶</button>
+    <h1 class="subtitle" id="h-board-title">סיכום השלב</h1>
+    <div class="stagewrap">
+      <div class="stagebox" id="h-stagebox"></div>
+      <div class="board anim" id="h-boardlist"></div>
+    </div>
+    <button class="btn" id="h-next">לשלב הבא ▶</button>
   </div>
 
   <div id="h-end" class="screen center hidden" style="overflow:auto; justify-content:flex-start;">
@@ -226,6 +244,8 @@
     <div class="res">🏁</div>
     <h1 id="p-end-title"></h1>
     <p id="p-end-msg" style="color:#fff; font-size:1.4rem"></p>
+    <h1 id="p-end-eye" style="color:#fff"></h1>
+    <p id="p-end-note"></p>
   </div>
   <div class="pname" id="p-namelbl"></div>
 </div>
@@ -365,11 +385,16 @@ const COLOR_SEQ = [
   [350,.64,.12,'C',-1], [190,.68,.10,'H',1], [80,.72,.11,'L',-1], [275,.60,.11,'H',-1], [150,.68,.11,'C',-1]
 ];
 const STAGES = [
-  { title:'שלב 1', level:'קל', desc:'נתחיל בחימום. רוב האנשים יעברו את זה בקלות.' },
-  { title:'שלב 2', level:'בינוני', desc:'ההבדלים מתחילים להצטמצם...' },
-  { title:'שלב 3', level:'קשה', desc:'כאן כבר צריך עיניים טובות. ומסך טוב.' },
-  { title:'שלב 4', level:'קשה מאוד', desc:'רק מעטים יעברו את השלב הזה.' },
-  { title:'שלב הפתעה', level:'בונוס', desc:'שאלה אחרונה. הסתכלו טוב!' },
+  { title:'שלב 1', level:'קל', desc:'נתחיל בחימום.',
+    fact:'בעין יש שלושה סוגים של קולטני צבע: לאור כחול, ירוק ואדום. כל צבע שאתם רואים הוא שילוב של שלושתם.' },
+  { title:'שלב 2', level:'בינוני', desc:'ההבדלים מתחילים להצטמצם...',
+    fact:'העין הכי רגישה לאור ירוק־צהבהב. באור יום, אור ירוק נראה בהיר יותר מאור אדום או כחול באותה עוצמה.' },
+  { title:'שלב 3', level:'קשה', desc:'כאן כבר צריך עיניים טובות. ומסך טוב.',
+    fact:'כ־8% מהגברים וכחצי אחוז מהנשים ממוצא צפון־אירופי נולדים עם לקות בראיית צבעים, בעיקר בהבחנה בין אדום לירוק.' },
+  { title:'שלב 4', level:'קשה מאוד', desc:'ההבדלים הכי קטנים במשחק.',
+    fact:'לשרימפס גמל־השלמה יש 12 סוגים של קולטני צבע, לעומת 3 שלנו. ובכל זאת, בניסוי הוא הבחין בין צבעים פחות טוב מבני אדם.' },
+  { title:'שלב הפתעה', level:'בונוס', desc:'שאלה אחרונה. הסתכלו טוב!',
+    fact:'המוח לא מודד צבע לבד, הוא משווה אותו למה שסביבו. בשאלה הבאה תגלו עד כמה.' },
 ];
 const TYPE_NAME = { L:'בהירות', C:'רוויה (עוצמת הצבע)', H:'גוון' };
 const VIDEO_CLAIM = { 0:'97%', 2:'30%', 3:'8%' };
@@ -438,7 +463,7 @@ function startHost() {
             pid = String(m.pid || '').slice(0, 40); if (!pid) return;
             const name = String(m.name || 'שחקן').slice(0, 14);
             let p = H.players.get(pid);
-            if (!p) { p = { pid, name, score:0 }; H.players.set(pid, p); }
+            if (!p) { p = { pid, name, correct:0, time:0 }; H.players.set(pid, p); }
             p.name = name; p.conn = conn; p.online = true;
             renderPlayers(); sendState(p);
           } else if (m.t === 'a' && pid) onAnswer(pid, m);
@@ -456,14 +481,22 @@ function startHost() {
   }
   const online = () => [...H.players.values()].filter(p => p.online);
   const send = (p, o) => p.conn && p.online && p.conn.send(o);
-  const ranked = () => [...H.players.values()].sort((a, b) => b.score - a.score);
+  // דירוג לפי מספר התשובות הנכונות. בתיקו: מי שענה מהר יותר בסך הכול
+  const ranked = () => [...H.players.values()].sort((a, b) => b.correct - a.correct || a.time - b.time || a.name.localeCompare(b.name));
+  const snapshot = () => { const m = new Map(); ranked().forEach((p, i) => m.set(p.pid, { rank:i + 1, correct:p.correct })); return m; };
+  const eyeLevel = f => f >= 0.9 ? 'עין על־אנושית 🦸' : f >= 0.75 ? 'עין נץ 🦅' : f >= 0.5 ? 'עין חדה 👁️' : 'עין סקרנית 🔍';
+  function endMsg(p) {
+    const n = H.players.size, total = H.qs.length;
+    const fewer = [...H.players.values()].filter(o => o.correct < p.correct).length;
+    return { t:'end', rank:rankOf(p.pid), correct:p.correct, total, n, beat: n > 1 ? Math.round(fewer / (n - 1) * 100) : 0, eye: eyeLevel(total ? p.correct / total : 0) };
+  }
   const rankOf = pid => ranked().findIndex(p => p.pid === pid) + 1;
 
   function sendState(p) {
     if (H.phase === 'question' && !H.answers[H.qi].has(p.pid)) {
       const left = Math.max(1, H.dur - (performance.now() - H.qStart) / 1000);
       send(p, { t:'q', i:H.qi, n:N, dur:left, num:H.qi + 1, total:H.qs.length });
-    } else if (H.phase === 'end') send(p, { t:'end', rank:rankOf(p.pid), score:p.score, n:H.players.size });
+    } else if (H.phase === 'end') send(p, endMsg(p));
     else send(p, { t:'wait', name:p.name, lobby: H.phase === 'lobby' });
   }
 
@@ -471,7 +504,7 @@ function startHost() {
     H.qs = buildQuestions(+$('set-per').value, $('set-bonus').checked);
     H.dur = +$('set-dur').value;
     H.answers = H.qs.map(() => new Map());
-    H.players.forEach(p => p.score = 0);
+    H.players.forEach(p => { p.correct = 0; p.time = 0; });
     H.qi = -1; next();
   }
   function next() {
@@ -484,6 +517,9 @@ function startHost() {
       $('h-intro-sub').textContent = st.level;
       $('h-intro-title').textContent = st.title;
       $('h-intro-desc').textContent = st.desc;
+      $('h-intro-fact').innerHTML = '<b>הידעתם?</b> ';
+      $('h-intro-fact').appendChild(document.createTextNode(st.fact || ''));
+      H.stageSnap = snapshot();
       show('#host .screen', 'h-intro');
       online().forEach(p => send(p, { t:'wait', name:p.name, msg: st.title + ' · ' + st.level }));
     } else showQuestion();
@@ -545,12 +581,11 @@ function startHost() {
       counts[a.c]++;
       const ok = a.c === q.odd;
       a.ok = ok;
-      a.pts = ok ? Math.round(1000 * (1 - Math.min(1, a.ms / (H.dur * 1000)) / 2)) : 0;
-      const p = H.players.get(pid); if (p) p.score += a.pts;
+      const p = H.players.get(pid); if (p && ok) { p.correct++; p.time += a.ms; }
     });
     H.players.forEach(p => {
       const a = A.get(p.pid);
-      send(p, { t:'res', ok: a ? a.ok : false, none: !a, trick: !!q.trick, pts: a ? a.pts : 0, score:p.score, rank:rankOf(p.pid), n:H.players.size });
+      send(p, { t:'res', ok: a ? a.ok : false, none: !a, trick: !!q.trick, correct:p.correct, done:H.qi + 1, rank:rankOf(p.pid), n:H.players.size });
     });
     const strips = $('h-strips'), nums = $('h-nums');
     const qi = H.qi;
@@ -578,19 +613,68 @@ function startHost() {
       $('h-revealinfo').innerHTML = 'התשובה: <b>פס ' + (q.odd + 1) + '</b><br>ההבדל היה ב<b>' + TYPE_NAME[q.type] + '</b><br>צדקו: <b>' + pct + '%</b> (' + okCount + ' מתוך ' + A.size + ')';
     }
     $('h-qctrl').classList.add('hidden'); $('h-bottom').classList.remove('hidden');
-    $('h-toboard').textContent = H.qi === H.qs.length - 1 ? 'לתוצאות ▶' : 'טבלה ▶';
+    const lastAll = H.qi === H.qs.length - 1, lastStage = lastAll || H.qs[H.qi + 1].stage !== q.stage;
+    $('h-toboard').textContent = lastStage && q.stage < 4 ? 'סיכום השלב ▶' : lastAll ? 'לתוצאות ▶' : 'השאלה הבאה ▶';
   }
-  function showBoard() {
-    if (H.qi === H.qs.length - 1) return endGame();
+  function afterReveal() {
+    const q = H.qs[H.qi], lastAll = H.qi === H.qs.length - 1;
+    const lastStage = lastAll || H.qs[H.qi + 1].stage !== q.stage;
+    if (lastStage && q.stage < 4) showStageSummary(q.stage);
+    else if (lastAll) endGame();
+    else next();
+  }
+  function showStageSummary(st) {
     H.phase = 'board';
+    $('h-board-title').textContent = 'סיכום ' + STAGES[st].title;
+    const idx = H.qs.map((q, i) => q.stage === st ? i : -1).filter(i => i >= 0), of = idx.length;
+    const players = [...H.players.values()], n = players.length;
+    const got = new Map(players.map(p => [p.pid, idx.filter(i => { const a = H.answers[i].get(p.pid); return a && a.ok; }).length]));
+    const dist = Array(of + 1).fill(0); got.forEach(g => dist[g]++);
+    const perfect = dist[of];
+    // תיבת נתוני הכיתה
+    const box = $('h-stagebox'); box.innerHTML = '';
+    const big = document.createElement('div'); big.className = 'big'; big.textContent = perfect + ' מתוך ' + n;
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = 'עברו את השלב בלי אף טעות';
+    const dl = document.createElement('div'); dl.className = 'dist';
+    const maxD = Math.max(1, ...dist);
+    for (let k = of; k >= 0; k--) {
+      const r = document.createElement('div'); r.className = 'dr';
+      r.innerHTML = '<span class="dk">' + k + ' מתוך ' + of + '</span><span class="db' + (k === of ? ' good' : '') + '" style="width:' + (dist[k] / maxD * 200) + 'px"></span><b>' + dist[k] + '</b>';
+      dl.appendChild(r);
+    }
+    box.append(big, lbl, dl);
+    // טבלת מובילים מונפשת: מהסדר של תחילת השלב לסדר החדש
     const el = $('h-boardlist'); el.innerHTML = '';
-    ranked().slice(0, 5).forEach((p, i) => {
+    const snap = H.stageSnap || new Map(), ROW = 66;
+    // בשלב הראשון כולם התחילו מאפס, אז אין משמעות לחיצי עלייה
+    const showMoves = [...snap.values()].some(v => v.correct > 0);
+    const top = ranked().slice(0, 5);
+    top.forEach((p, i) => {
+      const prev = snap.get(p.pid) || { rank:99, correct:0 };
       const r = document.createElement('div'); r.className = 'row';
-      const nm = document.createElement('span'); nm.textContent = (i + 1) + '. ' + p.name;
-      const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = p.score;
+      r.style.top = (Math.min(prev.rank - 1, 5) * ROW) + 'px'; r.style.opacity = prev.rank <= 5 ? 1 : 0;
+      const nm = document.createElement('span'); nm.textContent = p.name;
+      const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = prev.correct + ' נכונות';
       r.append(nm, sc); el.appendChild(r);
+      setTimeout(() => {
+        r.style.top = (i * ROW) + 'px'; r.style.opacity = 1;
+        nm.textContent = (i + 1) + '. ' + p.name;
+        sc.textContent = p.correct + ' נכונות';
+        const moved = !showMoves || prev.rank === 99 ? 0 : prev.rank - (i + 1);
+        if (moved > 0) { const u = document.createElement('span'); u.className = 'up'; u.dir = 'ltr'; u.textContent = '▲' + moved; nm.appendChild(u); }
+      }, 700);
     });
-    if (!H.players.size) el.innerHTML = '<p class="status">אין שחקנים מחוברים</p>';
+    if (!n) el.innerHTML = '<p class="status">אין שחקנים מחוברים</p>';
+    // הודעה אישית לכל תלמיד
+    const now = snapshot();
+    players.forEach(p => {
+      const g = got.get(p.pid), lower = [...got.values()].filter(x => x < g).length;
+      const pr = snap.get(p.pid);
+      send(p, { t:'stage', title:STAGES[st].title, got:g, of, perfectPct: n ? Math.round(perfect / n * 100) : 0,
+        betterPct: n > 1 ? Math.round(lower / (n - 1) * 100) : 0, rank: now.get(p.pid).rank, moved: showMoves && pr ? pr.rank - now.get(p.pid).rank : 0, n });
+    });
+    const lastAll = H.qi === H.qs.length - 1;
+    $('h-next').textContent = lastAll ? 'לתוצאות ▶' : H.qs[H.qi + 1].trick ? 'לשלב ההפתעה ▶' : 'לשלב הבא ▶';
     show('#host .screen', 'h-board');
   }
   function endGame() {
@@ -602,7 +686,7 @@ function startHost() {
       const p = r[k]; if (!p) return;
       const d = document.createElement('div'); d.className = 'pod';
       const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = p.name;
-      const ps = document.createElement('div'); ps.className = 'ps'; ps.textContent = p.score + ' נקודות';
+      const ps = document.createElement('div'); ps.className = 'ps'; ps.textContent = p.correct + ' נכונות';
       const b = document.createElement('div'); b.className = 'block'; b.style.height = heights[k] + 'px'; b.style.background = colors[k]; b.style.color = '#1b1830'; b.textContent = k + 1;
       d.append(nm, ps, b); pod.appendChild(d);
     });
@@ -633,24 +717,24 @@ function startHost() {
       const A = H.answers[ti]; let f = 0, ok = 0; A.forEach(a => { if (a.c <= 1) f++; if (a.c === H.qs[ti].odd) ok++; });
       $('h-trickstat').textContent = 'בשלב ההפתעה ' + Math.round(ok / A.size * 100) + '% מצאו את הפס המוסתר, ו־' + Math.round(f / A.size * 100) + '% בחרו פס בצד הכהה, שהיה זהה לשאר.';
     } else $('h-trickstat').textContent = '';
-    H.players.forEach(p => send(p, { t:'end', rank:rankOf(p.pid), score:p.score, n:H.players.size }));
+    H.players.forEach(p => send(p, endMsg(p)));
     show('#host .screen', 'h-end');
   }
   function backToLobby() {
-    H.phase = 'lobby'; H.players.delete('solo'); H.players.forEach(p => p.score = 0);
+    H.phase = 'lobby'; H.players.delete('solo'); H.players.forEach(p => { p.correct = 0; p.time = 0; });
     online().forEach(p => send(p, { t:'wait', name:p.name, lobby:true }));
     show('#host .screen', 'h-lobby'); renderPlayers();
   }
 
   $('h-start').onclick = startGame;
   $('h-solo').onclick = () => {
-    H.players.set('solo', { pid:'solo', name:'אני', score:0, online:true, conn:{ send(){} } });
+    H.players.set('solo', { pid:'solo', name:'אני', correct:0, time:0, online:true, conn:{ send(){} } });
     renderPlayers(); startGame();
   };
   $('h-intro-go').onclick = showQuestion;
   $('h-skip').onclick = reveal;
-  $('h-toboard').onclick = showBoard;
-  $('h-next').onclick = next;
+  $('h-toboard').onclick = afterReveal;
+  $('h-next').onclick = () => { if (H.qi === H.qs.length - 1) endGame(); else next(); };
   $('h-again').onclick = backToLobby;
   $('h-testphone').onclick = () => { const a = document.createElement('a'); a.href = H.joinUrl; a.target = '_blank'; a.rel = 'noopener'; a.click(); };
   addEventListener('keydown', e => {
@@ -721,16 +805,33 @@ function startPlayer() {
     } else if (m.t === 'res') {
       P.curQ = -1; clearInterval(P.tick);
       pshow('p-res');
-      if (m.trick && m.ok) { $('player').className = 'ok'; $('p-res-icon').textContent = '🦅'; $('p-res-title').textContent = 'וואו! לא נפלת באשליה'; $('p-res-pts').textContent = '+' + m.pts; }
-      else if (m.trick) { $('player').className = 'trick'; $('p-res-icon').textContent = '🤯'; $('p-res-title').textContent = m.none ? 'הזמן נגמר' : 'האשליה הטעתה אותך! הפס השונה הוסתר'; $('p-res-pts').textContent = '+0'; }
-      else if (m.ok) { $('player').className = 'ok'; $('p-res-icon').textContent = '✅'; $('p-res-title').textContent = 'נכון!'; $('p-res-pts').textContent = '+' + m.pts; }
-      else { $('player').className = 'bad'; $('p-res-icon').textContent = m.none ? '⌛' : '❌'; $('p-res-title').textContent = m.none ? 'הזמן נגמר' : 'לא הפעם'; $('p-res-pts').textContent = '+0'; }
-      $('p-res-rank').textContent = 'מקום ' + m.rank + ' מתוך ' + m.n + ' · סך הכול ' + m.score + ' נקודות';
+      if (m.trick && m.ok) { $('player').className = 'ok'; $('p-res-icon').textContent = '🦅'; $('p-res-title').textContent = 'וואו! לא נפלת באשליה'; }
+      else if (m.trick) { $('player').className = 'trick'; $('p-res-icon').textContent = '🤯'; $('p-res-title').textContent = m.none ? 'הזמן נגמר' : 'האשליה הטעתה אותך! הפס השונה הוסתר'; }
+      else if (m.ok) { $('player').className = 'ok'; $('p-res-icon').textContent = '✅'; $('p-res-title').textContent = 'נכון!'; }
+      else { $('player').className = 'bad'; $('p-res-icon').textContent = m.none ? '⌛' : '❌'; $('p-res-title').textContent = m.none ? 'הזמן נגמר' : 'לא הפעם'; }
+      $('p-res-pts').textContent = m.correct + ' / ' + m.done;
+      $('p-res-rank').textContent = 'תשובות נכונות עד עכשיו · מקום ' + m.rank + ' מתוך ' + m.n;
+    } else if (m.t === 'stage') {
+      P.curQ = -1; clearInterval(P.tick);
+      pshow('p-res');
+      const perfect = m.got === m.of;
+      $('player').className = perfect ? 'ok' : '';
+      $('p-res-icon').textContent = perfect ? '🏆' : '🏁';
+      $('p-res-title').textContent = perfect ? 'עברת את ' + m.title + ' בלי טעות!' : m.title + ': ' + m.got + ' נכונות מתוך ' + m.of;
+      $('p-res-pts').textContent = 'מקום ' + m.rank;
+      const lines = [];
+      if (perfect) lines.push('הצטרפת ל־' + m.perfectPct + '% מהכיתה שעברו את השלב בלי טעות');
+      else if (m.betterPct > 0) lines.push('הצלחת בשלב הזה יותר מ־' + m.betterPct + '% מהכיתה');
+      else lines.push('השלב הבא הוא הזדמנות חדשה!');
+      if (m.moved > 0) lines.push(m.moved === 1 ? 'עלית מקום אחד בטבלה!' : 'עלית ' + m.moved + ' מקומות בטבלה!');
+      $('p-res-rank').textContent = lines.join(' · ');
     } else if (m.t === 'end') {
       P.curQ = -1; clearInterval(P.tick);
       pshow('p-end');
-      $('p-end-title').textContent = m.rank === 1 ? '🥇 מקום ראשון!' : 'סיימת במקום ' + m.rank;
-      $('p-end-msg').textContent = 'מתוך ' + m.n + ' שחקנים · ' + m.score + ' נקודות';
+      $('p-end-title').textContent = m.rank === 1 ? '🥇 מקום ראשון!' : 'סיימת במקום ' + m.rank + ' מתוך ' + m.n;
+      $('p-end-msg').textContent = 'ענית נכון על ' + m.correct + ' מתוך ' + m.total + (m.n > 1 && m.beat > 0 ? ' · יותר מ־' + m.beat + '% מהכיתה' : '');
+      $('p-end-eye').textContent = 'דרגת העין שלך: ' + m.eye;
+      $('p-end-note').textContent = 'זה משחק ולא בדיקת ראייה. התוצאה תלויה גם במסך ובתאורה.';
     }
   }
   $('p-go').onclick = join;
