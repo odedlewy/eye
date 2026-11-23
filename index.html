@@ -6,7 +6,7 @@
 <title>מבדק החוש השישי – כמה טובות העיניים שלכם?</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   :root { --bg:#14121f; --panel:#221f33; --accent:#ffd23f; --ok:#2ecc71; --bad:#e74c3c; --txt:#fff; --muted:#a9a6c0; }
@@ -229,7 +229,6 @@
 
 <script>
 'use strict';
-const PREFIX = 'hushshishi-v1-';
 const params = new URLSearchParams(location.search);
 // מסך המורה נפתח רק מהכתובת המיוחדת שבקיצור הדרך, או מקובץ שעל המחשב. כל כתובת אחרת פותחת את מסך התלמיד
 const HOST_KEY = 'moreh-k7q2x9';
@@ -239,7 +238,13 @@ const $ = id => document.getElementById(id);
 const show = (group, id) => { document.querySelectorAll(group).forEach(e => e.classList.add('hidden')); $(id).classList.remove('hidden'); };
 
 /* ================= שכבת חיבור ================= */
-const ICE = { config: { iceServers: [ { urls:'stun:stun.l.google.com:19302' }, { urls:'stun:stun1.l.google.com:19302' } ] } };
+// חיבור דרך שרתי אייבלי. המפתח מוגבל לערוצי משחק בלבד
+const ABLY_KEY = 'vL085Q.1JUw5w:HUpVZFcB748qPlSMjFPHAavjrmX5cfvCqKChNEgwbsw';
+const NET_ERR = 'לא מצליח להתחבר לשרת המשחק. בדקו את החיבור לאינטרנט ונסו לרענן את הדף.';
+function ablyClient(clientId) {
+  return new Ably.Realtime({ key: ABLY_KEY, clientId, echoMessages: false, disconnectedRetryTimeout: 3000 });
+}
+const isHostMember = m => m && m.data && m.data.host === true;
 
 function makeHostTransport(code, handlers) {
   // handlers: onReady(), onError(msg), onConn(conn) ; conn: {send, onData, onClose}
@@ -260,22 +265,37 @@ function makeHostTransport(code, handlers) {
     setTimeout(handlers.onReady, 50);
     return { close(){ bc.close(); } };
   }
-  if (typeof Peer === 'undefined') { handlers.onError('לא הצלחתי לטעון את רכיב החיבור. בדקו שיש חיבור לאינטרנט.'); return null; }
-  const peer = new Peer(PREFIX + code, ICE);
-  peer.on('open', () => handlers.onReady());
-  peer.on('error', e => handlers.onError(e.type === 'unavailable-id' ? 'taken' : 'שגיאת חיבור: ' + e.type));
-  peer.on('disconnected', () => { try { peer.reconnect(); } catch(_){} });
-  peer.on('connection', dc => {
-    const c = { _d:null, _c:null, send: o => { try { dc.open && dc.send(o); } catch(_){} }, onData(f){ this._d=f; }, onClose(f){ this._c=f; } };
-    dc.on('open', () => handlers.onConn(c));
-    dc.on('data', d => c._d && c._d(d));
-    dc.on('close', () => c._c && c._c());
-    dc.on('error', () => c._c && c._c());
+  if (typeof Ably === 'undefined') { handlers.onError(NET_ERR); return null; }
+  const rt = ablyClient('host-' + Math.random().toString(36).slice(2, 8));
+  const base = 'game:' + code;
+  const main = rt.channels.get(base), pres = rt.channels.get(base + ':presence');
+  const conns = {}; let ready = false, closed = false;
+  const timer = setTimeout(() => { if (!ready && !closed) handlers.onError(NET_ERR); }, 15000);
+  rt.connection.once('connected', async () => {
+    try {
+      const members = await pres.presence.get();
+      if (members.some(isHostMember)) { handlers.onError('taken'); return; }
+      await pres.presence.enter({ host: true });
+      await main.subscribe('up', msg => {
+        const pid = String(msg.clientId || '').slice(0, 40);
+        if (!pid || !msg.data) return;
+        let c = conns[pid];
+        if (!c) {
+          const out = rt.channels.get(base + ':p:' + pid);
+          c = { _d:null, _c:null, send: o => { out.publish('m', o).catch(() => {}); }, onData(f){ this._d = f; }, onClose(f){ this._c = f; } };
+          conns[pid] = c; handlers.onConn(c);
+        }
+        c._d && c._d(msg.data);
+      });
+      pres.presence.subscribe('leave', m => { const c = conns[m.clientId]; c && c._c && c._c(); });
+      ready = true; clearTimeout(timer); handlers.onReady();
+    } catch (e) { if (!closed) handlers.onError(NET_ERR); }
   });
-  return { close(){ peer.destroy(); } };
+  rt.connection.on('failed', () => { if (!closed) handlers.onError(NET_ERR); });
+  return { close(){ closed = true; clearTimeout(timer); try { rt.close(); } catch(_){} } };
 }
 
-function makePlayerTransport(code, handlers) {
+function makePlayerTransport(code, pid, handlers) {
   // handlers: onOpen(), onData(o), onClose(), onError(msg)
   if (LOCAL) {
     const me = 'p' + Math.random().toString(36).slice(2, 9);
@@ -291,18 +311,27 @@ function makePlayerTransport(code, handlers) {
     addEventListener('beforeunload', () => bc.postMessage({ to:'host', from:me, kind:'bye' }));
     return { send: o => bc.postMessage({ to:'host', from:me, kind:'msg', payload:o }), close(){ bc.close(); } };
   }
-  if (typeof Peer === 'undefined') { handlers.onError('לא הצלחתי לטעון את רכיב החיבור. בדקו שיש אינטרנט.'); return null; }
-  const peer = new Peer(ICE);
-  let dc = null;
-  peer.on('open', () => {
-    dc = peer.connect(PREFIX + code, { reliable:true });
-    dc.on('open', handlers.onOpen);
-    dc.on('data', handlers.onData);
-    dc.on('close', handlers.onClose);
-    dc.on('error', handlers.onClose);
+  if (typeof Ably === 'undefined') { handlers.onError(NET_ERR); return null; }
+  const rt = ablyClient(pid);
+  const base = 'game:' + code;
+  const main = rt.channels.get(base), mine = rt.channels.get(base + ':p:' + pid), pres = rt.channels.get(base + ':presence');
+  let opened = false, down = false, closed = false;
+  const timer = setTimeout(() => { if (!opened && !closed) handlers.onError(NET_ERR); }, 15000);
+  rt.connection.once('connected', async () => {
+    try {
+      const members = await pres.presence.get();
+      if (!members.some(isHostMember)) { clearTimeout(timer); handlers.onError('לא מצאתי משחק עם המספר הזה. בדקו את המספר שעל המסך.'); return; }
+      await mine.subscribe('m', msg => handlers.onData(msg.data));
+      await pres.presence.enter({});
+      opened = true; clearTimeout(timer); handlers.onOpen();
+    } catch (e) { if (!closed) handlers.onError(NET_ERR); }
   });
-  peer.on('error', e => handlers.onError(e.type === 'peer-unavailable' ? 'לא מצאתי משחק עם המספר הזה' : 'שגיאת חיבור: ' + e.type));
-  return { send: o => { try { dc && dc.open && dc.send(o); } catch(_){} }, close(){ peer.destroy(); } };
+  rt.connection.on(st => {
+    if (!opened || closed) return;
+    if (st.current === 'disconnected' || st.current === 'suspended') { if (!down) { down = true; handlers.onClose(); } }
+    else if (st.current === 'connected' && down) { down = false; handlers.onOpen(); }
+  });
+  return { send: o => { main.publish('up', o).catch(() => {}); }, close(){ closed = true; clearTimeout(timer); try { rt.close(); } catch(_){} } };
 }
 
 /* ================= צבעים ================= */
@@ -381,7 +410,7 @@ function startHost() {
       onReady: () => { $('h-status').textContent = '✅ מוכן. מחכים לשחקנים.'; },
       onError: msg => {
         if (msg === 'taken') { H.transport && H.transport.close(); connect(); return; }
-        $('h-status').textContent = '⚠️ ' + msg + ' ייתכן שהרשת חוסמת את החיבור.';
+        $('h-status').textContent = '⚠️ ' + msg;
       },
       onConn: conn => {
         let pid = null;
@@ -634,12 +663,12 @@ function startPlayer() {
   }
   function connect() {
     P.t && P.t.close && P.t.close();
-    P.t = makePlayerTransport(P.code, {
+    P.t = makePlayerTransport(P.code, pid, {
       onOpen: () => { P.joined = true; P.t.send({ t:'join', pid, name:P.name }); },
       onData: onMsg,
-      onClose: () => { if (!P.joined) return; $('p-wait-title').textContent = 'החיבור נותק'; $('p-wait-msg').textContent = 'מנסה להתחבר שוב...'; pshow('p-wait'); setTimeout(connect, 2000); },
+      onClose: () => { if (!P.joined) return; $('p-wait-title').textContent = 'החיבור נותק'; $('p-wait-msg').textContent = 'מנסה להתחבר שוב... אם זה לא מסתדר, רעננו את הדף.'; pshow('p-wait'); },
       onError: msg => {
-        if (P.joined) { setTimeout(connect, 2500); return; }
+        if (P.joined) return;
         $('p-err').textContent = msg; $('p-go').disabled = false;
       }
     });
