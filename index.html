@@ -41,7 +41,11 @@
   .warn { background:#5a1e2a; color:#ffd7dc; padding:.8em 1.2em; border-radius:12px; max-width:900px; }
   .status { color:var(--muted); font-size:1rem; }
 
-  .topbar { display:flex; align-items:center; justify-content:space-between; padding:.6rem 1.4rem; background:#0c0b14; font-size:1.4rem; gap:1rem; }
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding:.6rem 1.4rem .6rem 210px; background:#0c0b14; font-size:1.4rem; gap:1rem; }
+  .snd { position:fixed; top:10px; left:12px; z-index:50; display:flex; align-items:center; gap:8px; direction:ltr; background:rgba(12,11,20,.82); padding:4px 12px 4px 6px; border-radius:999px; border:1px solid #2c2944; }
+  .snd button { background:none; font-size:1.35rem; color:#fff; padding:2px 4px; line-height:1; }
+  .snd input { width:120px; accent-color:var(--accent); cursor:pointer; }
+  .snd.off input { opacity:.35; }
   .topbar .stage { color:var(--accent); font-weight:800; }
   .timerwrap { flex:1; height:12px; background:#2c2944; border-radius:6px; overflow:hidden; margin:0 1rem; }
   #timerbar { height:100%; background:var(--accent); width:100%; }
@@ -120,6 +124,7 @@
 
 <!-- ======================= מסך המורה ======================= -->
 <div id="host" class="hidden">
+  <div class="snd" id="snd"><button id="snd-mute" title="השתקה (מקש M)">🔊</button><input type="range" id="snd-vol" min="0" max="100" value="50" title="עוצמת המוזיקה"></div>
   <div id="h-lobby" class="screen lobby">
     <h1>👁️ כמה טובות העיניים שלכם?</h1>
     <h2>מבדק החוש השישי · מצאו את הפס השונה</h2>
@@ -433,6 +438,55 @@ function buildQuestions(perStage, bonus) {
   return qs;
 }
 
+/* ================= צליל ================= */
+// מוזיקת רקע מקורית (קובץ music.ogg לצד הדף) וצלילים קצרים שהדפדפן מייצר. רק במחשב המורה.
+const SND = { ctx:null, master:null, music:null, buf:null, src:null, el:null, want:false, vol:0.5, muted:false };
+try { const v = localStorage.getItem('ss-vol'); if (v !== null) SND.vol = +v; SND.muted = localStorage.getItem('ss-muted') === '1'; } catch(_){}
+function sndLevel() { return SND.muted ? 0 : Math.pow(SND.vol, 2); }
+function sndApply() {
+  if (SND.master) SND.master.gain.setTargetAtTime(sndLevel(), SND.ctx.currentTime, 0.05);
+  if (SND.el) SND.el.volume = SND.want ? sndLevel() * 0.8 : 0;
+  const box = document.getElementById('snd');
+  if (box) { box.classList.toggle('off', SND.muted); document.getElementById('snd-mute').textContent = SND.muted ? '🔇' : '🔊'; document.getElementById('snd-vol').value = Math.round(SND.vol * 100); }
+  try { localStorage.setItem('ss-vol', SND.vol); localStorage.setItem('ss-muted', SND.muted ? '1' : '0'); } catch(_){}
+}
+function sndInit() {
+  if (SND.ctx) { SND.ctx.resume && SND.ctx.resume(); return; }
+  const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+  SND.ctx = new C();
+  SND.master = SND.ctx.createGain(); SND.master.gain.value = sndLevel(); SND.master.connect(SND.ctx.destination);
+  SND.music = SND.ctx.createGain(); SND.music.gain.value = 0; SND.music.connect(SND.master);
+  fetch('music.ogg').then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+    .then(b => SND.ctx.decodeAudioData(b))
+    .then(buf => { SND.buf = buf; if (SND.want) musicOn(); })
+    .catch(() => { // קובץ שנפתח מהמחשב: נגן רגיל
+      try { SND.el = new Audio('music.ogg'); SND.el.loop = true; SND.el.volume = 0; if (SND.want) musicOn(); } catch(_){}
+    });
+}
+function musicOn() {
+  SND.want = true;
+  if (SND.buf && SND.ctx) {
+    if (!SND.src) { SND.src = SND.ctx.createBufferSource(); SND.src.buffer = SND.buf; SND.src.loop = true; SND.src.connect(SND.music); SND.src.start(); }
+    SND.music.gain.cancelScheduledValues(SND.ctx.currentTime);
+    SND.music.gain.setTargetAtTime(0.8, SND.ctx.currentTime, 0.25);
+  } else if (SND.el) { SND.el.play().catch(() => {}); sndApply(); }
+}
+function musicOff() {
+  SND.want = false;
+  if (SND.music && SND.ctx) { SND.music.gain.cancelScheduledValues(SND.ctx.currentTime); SND.music.gain.setTargetAtTime(0, SND.ctx.currentTime, 0.3); }
+  if (SND.el) { SND.el.volume = 0; SND.el.pause(); }
+}
+function blip(freq, len, gain, type) {
+  if (!SND.ctx) return;
+  const t = SND.ctx.currentTime, o = SND.ctx.createOscillator(), g = SND.ctx.createGain();
+  o.type = type || 'sine'; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.connect(g); g.connect(SND.master); o.start(t); o.stop(t + len + 0.05);
+}
+// תקתוק עדין בשניות האחרונות, וצליל פעמון רך בחשיפה
+function sndTick(last) { blip(last ? 1320 : 990, 0.07, 0.22, 'triangle'); }
+function sndDing() { blip(784, 1.4, 0.18); setTimeout(() => blip(1175, 1.2, 0.12), 90); }
+
 /* ================= מורה ================= */
 function startHost() {
   $('host').classList.remove('hidden');
@@ -553,9 +607,12 @@ function startHost() {
     online().forEach(p => send(p, { t:'q', i:H.qi, n:N, dur:H.dur, num:H.qi + 1, total:H.qs.length }));
     updateCount();
     clearInterval(H.timer);
+    musicOn(); H.lastTick = 0;
     H.timer = setInterval(() => {
       const f = 1 - (performance.now() - H.qStart) / (H.dur * 1000);
       $('timerbar').style.width = Math.max(0, f * 100) + '%';
+      const left = Math.ceil(f * H.dur);
+      if (left >= 1 && left <= 5 && left !== H.lastTick) { H.lastTick = left; sndTick(left === 1); }
       if (f <= 0) reveal();
     }, 100);
   }
@@ -574,7 +631,7 @@ function startHost() {
   }
   function reveal() {
     if (H.phase !== 'question') return;
-    H.phase = 'reveal'; clearInterval(H.timer);
+    H.phase = 'reveal'; clearInterval(H.timer); musicOff();
     const q = H.qs[H.qi], A = H.answers[H.qi];
     const counts = Array(N).fill(0);
     A.forEach((a, pid) => {
@@ -592,7 +649,7 @@ function startHost() {
     const markAnswer = () => {
       if (H.qi !== qi) return;
       strips.classList.add('merged'); nums.classList.add('merged');
-      setTimeout(() => { if (H.qi === qi) strips.children[q.odd].classList.add('correct'); }, 900);
+      setTimeout(() => { if (H.qi === qi) { strips.children[q.odd].classList.add('correct'); sndDing(); } }, 900);
     };
     // בשלב ההפתעה: קודם הרקע נעלם לאט, והפסים עצמם לא משתנים
     if (q.trick) { strips.classList.add('unveil'); setTimeout(markAnswer, 3200); }
@@ -678,6 +735,7 @@ function startHost() {
     show('#host .screen', 'h-board');
   }
   function endGame() {
+    musicOff();
     H.phase = 'end'; clearInterval(H.timer);
     const r = ranked();
     const pod = $('h-podium'); pod.innerHTML = '';
@@ -721,15 +779,19 @@ function startHost() {
     show('#host .screen', 'h-end');
   }
   function backToLobby() {
+    musicOff();
     H.phase = 'lobby'; H.players.delete('solo'); H.players.forEach(p => { p.correct = 0; p.time = 0; });
     online().forEach(p => send(p, { t:'wait', name:p.name, lobby:true }));
     show('#host .screen', 'h-lobby'); renderPlayers();
   }
 
-  $('h-start').onclick = startGame;
+  $('h-start').onclick = () => { sndInit(); startGame(); };
+  $('snd-mute').onclick = () => { sndInit(); SND.muted = !SND.muted; sndApply(); };
+  $('snd-vol').oninput = e => { sndInit(); SND.vol = e.target.value / 100; if (SND.vol > 0) SND.muted = false; sndApply(); };
+  sndApply();
   $('h-solo').onclick = () => {
     H.players.set('solo', { pid:'solo', name:'אני', correct:0, time:0, online:true, conn:{ send(){} } });
-    renderPlayers(); startGame();
+    sndInit(); renderPlayers(); startGame();
   };
   $('h-intro-go').onclick = showQuestion;
   $('h-skip').onclick = reveal;
@@ -738,6 +800,7 @@ function startHost() {
   $('h-again').onclick = backToLobby;
   $('h-testphone').onclick = () => { const a = document.createElement('a'); a.href = H.joinUrl; a.target = '_blank'; a.rel = 'noopener'; a.click(); };
   addEventListener('keydown', e => {
+    if (e.code === 'KeyM' && e.target.tagName !== 'INPUT') { sndInit(); SND.muted = !SND.muted; sndApply(); return; }
     if (e.code !== 'Space' && e.code !== 'Enter') return;
     if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
     e.preventDefault();
