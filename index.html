@@ -6,7 +6,7 @@
 <title>מבדק החוש השישי – כמה טובות העיניים שלכם?</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
-<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ably/pubsub-device@3.2.0/dist/cdn/ably.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   :root { --bg:#14121f; --panel:#221f33; --accent:#ffd23f; --ok:#2ecc71; --bad:#e74c3c; --txt:#fff; --muted:#a9a6c0; }
@@ -242,7 +242,7 @@ const show = (group, id) => { document.querySelectorAll(group).forEach(e => e.cl
 const ABLY_KEY = 'vL085Q.1JUw5w:HUpVZFcB748qPlSMjFPHAavjrmX5cfvCqKChNEgwbsw';
 const NET_ERR = 'לא מצליח להתחבר לשרת המשחק. בדקו את החיבור לאינטרנט ונסו לרענן את הדף.';
 function ablyClient(clientId) {
-  return new Ably.Realtime({ key: ABLY_KEY, clientId, echoMessages: false, disconnectedRetryTimeout: 3000 });
+  return AblyPubSub.createClient({ key: ABLY_KEY, clientId, echoMessages: false, disconnectedRetryTimeout: 3000 });
 }
 const isHostMember = m => m && m.data && m.data.host === true;
 
@@ -265,7 +265,7 @@ function makeHostTransport(code, handlers) {
     setTimeout(handlers.onReady, 50);
     return { close(){ bc.close(); } };
   }
-  if (typeof Ably === 'undefined') { handlers.onError(NET_ERR); return null; }
+  if (typeof AblyPubSub === 'undefined') { handlers.onError(NET_ERR); return null; }
   const rt = ablyClient('host-' + Math.random().toString(36).slice(2, 8));
   const base = 'game:' + code;
   const main = rt.channels.get(base), pres = rt.channels.get(base + ':presence');
@@ -311,7 +311,7 @@ function makePlayerTransport(code, pid, handlers) {
     addEventListener('beforeunload', () => bc.postMessage({ to:'host', from:me, kind:'bye' }));
     return { send: o => bc.postMessage({ to:'host', from:me, kind:'msg', payload:o }), close(){ bc.close(); } };
   }
-  if (typeof Ably === 'undefined') { handlers.onError(NET_ERR); return null; }
+  if (typeof AblyPubSub === 'undefined') { handlers.onError(NET_ERR); return null; }
   const rt = ablyClient(pid);
   const base = 'game:' + code;
   const main = rt.channels.get(base), mine = rt.channels.get(base + ':p:' + pid), pres = rt.channels.get(base + ':presence');
