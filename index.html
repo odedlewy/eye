@@ -202,7 +202,7 @@
     <div class="podium" id="h-podium"></div>
     <div class="endgrid">
       <div>
-        <h3>הכיתה שלנו מול מה שהסרטון טען</h3>
+        <h3>איך הכיתה הצליחה בכל שלב</h3>
         <table class="stats" id="h-stagestats"></table>
       </div>
       <div>
@@ -406,7 +406,6 @@ const STAGES = [
     fact:'המוח לא מודד צבע לבד, הוא משווה אותו למה שסביבו. בשאלה הבאה תגלו עד כמה.' },
 ];
 const TYPE_NAME = { L:'בהירות', C:'רוויה (עוצמת הצבע)', H:'גוון' };
-const VIDEO_CLAIM = { 0:'97%', 2:'30%', 3:'8%' };
 const N = 8;
 
 function makeColorQuestion(entry, dE, stage, avoidIdx, hard) {
@@ -753,7 +752,7 @@ function startHost() {
       d.append(nm, ps, b); pod.appendChild(d);
     });
     // סטטיסטיקה לפי שלב
-    let html = '<tr><th>שלב</th><th>תשובות נכונות</th><th>עברו את כל השלב</th><th>הסרטון טען</th></tr>';
+    let html = '<tr><th>שלב</th><th>תשובות נכונות</th><th>עברו את כל השלב</th></tr>';
     for (let s = 0; s < 4; s++) {
       const idx = H.qs.map((q, i) => q.stage === s ? i : -1).filter(i => i >= 0);
       let tot = 0, ok = 0; const per = new Map();
@@ -764,7 +763,7 @@ function startHost() {
       let passed = 0; per.forEach(e => { if (e.n === idx.length && e.ok === idx.length) passed++; });
       const pctOk = tot ? Math.round(ok / tot * 100) + '%' : '—';
       const pctPass = per.size ? Math.round(passed / per.size * 100) + '%' : '—';
-      html += '<tr><td>' + STAGES[s].title + ' · ' + STAGES[s].level + '</td><td>' + pctOk + '</td><td>' + pctPass + '</td><td>' + (VIDEO_CLAIM[s] || '—') + '</td></tr>';
+      html += '<tr><td>' + STAGES[s].title + ' · ' + STAGES[s].level + '</td><td>' + pctOk + '</td><td>' + pctPass + '</td></tr>';
     }
     $('h-stagestats').innerHTML = html;
     let th = '<tr><th>סוג ההבדל</th><th>תשובות נכונות</th></tr>';
