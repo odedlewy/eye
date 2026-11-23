@@ -45,13 +45,15 @@
   .topbar .stage { color:var(--accent); font-weight:800; }
   .timerwrap { flex:1; height:12px; background:#2c2944; border-radius:6px; overflow:hidden; margin:0 1rem; }
   #timerbar { height:100%; background:var(--accent); width:100%; }
-  .strips { flex:1; display:flex; direction:rtl; gap:8px; background:#fff; padding:8px; min-height:0; }
-  .strip { flex:1; position:relative; display:flex; align-items:flex-end; justify-content:center; transition:filter .4s; }
-  .strip .num { font-size:clamp(1.5rem,3vw,3rem); font-weight:800; color:#fff; text-shadow:0 0 6px rgba(0,0,0,.7); margin-bottom:.5rem; }
-  .strip .inner { position:absolute; left:20%; right:20%; top:12%; bottom:18%; }
-  .strip.correct { outline:12px solid var(--accent); outline-offset:-12px; box-shadow:inset 0 0 0 16px #000; }
-  .strip.correct::after { content:'✓'; position:absolute; top:38%; font-size:7rem; font-weight:800; color:var(--accent); text-shadow:0 0 14px #000; }
-  .strips.illusion-reveal .strip { background:#bdbdbd !important; transition:background .8s; }
+  .strips { flex:1; display:flex; direction:rtl; gap:8px; background:#fff; padding:8px; min-height:0; transition:gap .9s ease; }
+  .strip { flex:1; position:relative; }
+  .strip .inner { position:absolute; left:20%; right:20%; top:12%; bottom:12%; z-index:1; }
+  .strip .veil { position:absolute; inset:0; background:#bdbdbd; opacity:0; transition:opacity 3s ease; }
+  .strips.unveil .veil { opacity:1; }
+  .strips.merged, .numrow.merged { gap:0; }
+  .strip.correct::after { content:'✓'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:2; font-size:clamp(3rem,6vw,6.5rem); font-weight:800; color:#3ddc5a; text-shadow:0 0 10px rgba(0,0,0,.55); }
+  .numrow { display:flex; direction:rtl; gap:8px; padding:6px 8px; background:#0c0b14; transition:gap .9s ease; }
+  .numrow div { flex:1; text-align:center; font-size:clamp(1.3rem,2.6vw,2.6rem); font-weight:800; color:#fff; line-height:1.2; }
 
   .bottom { display:flex; align-items:center; gap:1.5rem; padding:1rem 1.4rem; background:#0c0b14; }
   .hist { flex:1; display:flex; direction:rtl; gap:8px; align-items:flex-end; height:110px; }
@@ -152,6 +154,7 @@
       <span id="h-q-num"></span>
     </div>
     <div class="strips" id="h-strips"></div>
+    <div class="numrow" id="h-nums"></div>
     <div class="bottom hidden" id="h-bottom">
       <div class="revealinfo" id="h-revealinfo"></div>
       <div class="hist" id="h-hist"></div>
@@ -350,8 +353,17 @@ function toCss(rgb) {
   const enc = v => { v = Math.min(1, Math.max(0, v)); v = v <= 0.0031308 ? 12.92*v : 1.055*Math.pow(v, 1/2.4) - 0.055; return Math.round(v*255); };
   return 'rgb(' + rgb.map(enc).join(',') + ')';
 }
-// גודל ההבדל בכל שלב, במרחק צבע תפיסתי
-const STAGE_DE = [0.07, 0.04, 0.022, 0.012];
+// גודל ההבדל, במרחק צבע תפיסתי: יורד ברציפות מהשאלה הראשונה לאחרונה
+const DE_START = 0.075, DE_END = 0.008;
+// תיקון לפי סוג ההבדל, כדי שהקושי ייראה דומה בכל סוג
+const TYPE_MUL = { L:1.0, C:1.25, H:1.15 };
+// סדרת צבעים קבועה: גוון, בהירות, רוויה, סוג ההבדל, כיוון ההבדל
+const COLOR_SEQ = [
+  [25,.62,.13,'L',1], [145,.68,.12,'H',1], [250,.60,.11,'C',-1], [330,.64,.12,'H',-1], [200,.68,.10,'L',-1],
+  [60,.70,.11,'C',-1], [285,.60,.12,'L',1], [110,.72,.11,'H',1], [230,.66,.10,'C',-1], [10,.66,.12,'H',1],
+  [170,.70,.10,'L',1], [300,.62,.12,'C',-1], [40,.66,.12,'L',-1], [130,.66,.12,'H',-1], [260,.62,.11,'L',1],
+  [350,.64,.12,'C',-1], [190,.68,.10,'H',1], [80,.72,.11,'L',-1], [275,.60,.11,'H',-1], [150,.68,.11,'C',-1]
+];
 const STAGES = [
   { title:'שלב 1', level:'קל', desc:'נתחיל בחימום. רוב האנשים יעברו את זה בקלות.' },
   { title:'שלב 2', level:'בינוני', desc:'ההבדלים מתחילים להצטמצם...' },
@@ -363,30 +375,36 @@ const TYPE_NAME = { L:'בהירות', C:'רוויה (עוצמת הצבע)', H:'�
 const VIDEO_CLAIM = { 0:'97%', 2:'30%', 3:'8%' };
 const N = 8;
 
-function makeColorQuestion(stage, type, avoidIdx) {
-  const dE = STAGE_DE[stage];
-  for (let tries = 0; tries < 500; tries++) {
-    const h = Math.random() * 360, L = 0.52 + Math.random() * 0.28, C = 0.09 + Math.random() * 0.08;
-    const sign = Math.random() < 0.5 ? -1 : 1;
+function makeColorQuestion(entry, dE, stage, avoidIdx, hard) {
+  const [h, L, C, type, sign] = entry;
+  const d = dE * TYPE_MUL[type];
+  for (const sg of [sign, -sign]) {
     let o;
-    if (type === 'L') o = [L + sign*dE, C, h];
-    else if (type === 'C') o = [L, Math.max(0.02, C + sign*dE), h];
-    else o = [L, C, h + sign * 2 * Math.asin(Math.min(1, dE / (2*C))) * 180 / Math.PI];
+    if (type === 'L') o = [L + sg*d, C, h];
+    else if (type === 'C') o = [L, C + sg*d, h];
+    else o = [L, C, h + sg * 2 * Math.asin(Math.min(1, d / (2*C))) * 180 / Math.PI];
     const b = oklchToRgb(L, C, h), r = oklchToRgb(...o);
-    if (inGamut(b) && inGamut(r)) {
-      let odd; do { odd = Math.floor(Math.random() * N); } while (odd === avoidIdx);
+    if (inGamut(b) && inGamut(r) && !(type === 'C' && o[1] < 0.02)) {
+      // מיקום הפס השונה אקראי. בשאלות הקשות לא בקצוות
+      let odd; do { odd = hard ? 1 + Math.floor(Math.random() * (N - 2)) : Math.floor(Math.random() * N); } while (odd === avoidIdx);
       return { stage, type, odd, base: toCss(b), oddColor: toCss(r) };
     }
   }
-  return makeColorQuestion(stage, 'L', avoidIdx);
+  return null;
 }
 function buildQuestions(perStage, bonus) {
-  const qs = []; let last = -1;
-  for (let s = 0; s < 4; s++) {
-    const types = []; while (types.length < perStage) types.push(...['L','C','H'].sort(() => Math.random() - .5));
-    for (let k = 0; k < perStage; k++) { const q = makeColorQuestion(s, types[k], last); last = q.odd; qs.push(q); }
+  const qs = []; const total = perStage * 4; let last = -1;
+  for (let i = 0; i < total; i++) {
+    const f = i / (total - 1);
+    const entry = COLOR_SEQ[Math.round(f * (COLOR_SEQ.length - 1))];
+    const dE = DE_START * Math.pow(DE_END / DE_START, f);
+    const q = makeColorQuestion(entry, dE, Math.floor(i / perStage), last, f >= 0.5);
+    if (q) { qs.push(q); last = q.odd; }
   }
-  if (bonus) qs.push({ stage:4, type:'T', trick:true, odd:-1 });
+  if (bonus) {
+    // שלב ההפתעה: פס אחד בהיר יותר באמת, והוא מוסתר בצד הבהיר של הרקע
+    qs.push({ stage:4, type:'T', trick:true, odd: N - 1 - Math.floor(Math.random() * 2) });
+  }
   return qs;
 }
 
@@ -478,6 +496,7 @@ function startHost() {
     $('h-q-stage').textContent = STAGES[q.stage].title + ' · ' + STAGES[q.stage].level;
     $('h-q-num').textContent = 'שאלה ' + (H.qi + 1) + ' מתוך ' + H.qs.length;
     const strips = $('h-strips'); strips.className = 'strips'; strips.innerHTML = '';
+    const nums = $('h-nums'); nums.className = 'numrow'; nums.innerHTML = '';
     for (let i = 0; i < N; i++) {
       const d = document.createElement('div'); d.className = 'strip';
       if (q.trick) {
@@ -485,11 +504,14 @@ function startHost() {
         const shade = t => { const v = Math.round(235 - t * 215); return 'rgb(' + v + ',' + v + ',' + v + ')'; };
         const a = (N - 1 - i) / N, b = (N - i) / N;   // קצה שמאל וקצה ימין של הפס
         d.style.background = 'linear-gradient(to right,' + shade(a) + ',' + shade(b) + ')';
-        const inner = document.createElement('div'); inner.className = 'inner'; inner.style.background = '#8a8a8a'; d.appendChild(inner);
+        const veil = document.createElement('div'); veil.className = 'veil'; d.appendChild(veil);
+        const inner = document.createElement('div'); inner.className = 'inner';
+        inner.style.background = i === q.odd ? 'rgb(152,152,152)' : 'rgb(138,138,138)';
+        d.appendChild(inner);
       } else d.style.background = i === q.odd ? q.oddColor : q.base;
       if (H.players.has('solo')) { d.style.cursor = 'pointer'; d.onclick = () => onAnswer('solo', { i:H.qi, c:i }); }
-      const n = document.createElement('div'); n.className = 'num'; n.textContent = i + 1; d.appendChild(n);
       strips.appendChild(d);
+      const n = document.createElement('div'); n.textContent = i + 1; nums.appendChild(n);
     }
     H.qStart = performance.now();
     online().forEach(p => send(p, { t:'q', i:H.qi, n:N, dur:H.dur, num:H.qi + 1, total:H.qs.length }));
@@ -521,7 +543,7 @@ function startHost() {
     const counts = Array(N).fill(0);
     A.forEach((a, pid) => {
       counts[a.c]++;
-      const ok = !q.trick && a.c === q.odd;
+      const ok = a.c === q.odd;
       a.ok = ok;
       a.pts = ok ? Math.round(1000 * (1 - Math.min(1, a.ms / (H.dur * 1000)) / 2)) : 0;
       const p = H.players.get(pid); if (p) p.score += a.pts;
@@ -530,9 +552,16 @@ function startHost() {
       const a = A.get(p.pid);
       send(p, { t:'res', ok: a ? a.ok : false, none: !a, trick: !!q.trick, pts: a ? a.pts : 0, score:p.score, rank:rankOf(p.pid), n:H.players.size });
     });
-    const strips = $('h-strips');
-    if (q.trick) strips.classList.add('illusion-reveal');
-    else { strips.classList.add('revealed'); strips.children[q.odd].classList.add('correct'); }
+    const strips = $('h-strips'), nums = $('h-nums');
+    const qi = H.qi;
+    const markAnswer = () => {
+      if (H.qi !== qi) return;
+      strips.classList.add('merged'); nums.classList.add('merged');
+      setTimeout(() => { if (H.qi === qi) strips.children[q.odd].classList.add('correct'); }, 900);
+    };
+    // בשלב ההפתעה: קודם הרקע נעלם לאט, והפסים עצמם לא משתנים
+    if (q.trick) { strips.classList.add('unveil'); setTimeout(markAnswer, 3200); }
+    else markAnswer();
     const hist = $('h-hist'); hist.innerHTML = '';
     const max = Math.max(1, ...counts);
     counts.forEach((c, i) => {
@@ -543,8 +572,8 @@ function startHost() {
     const okCount = [...A.values()].filter(a => a.ok).length;
     const pct = A.size ? Math.round(okCount / A.size * 100) : 0;
     if (q.trick) {
-      const darkSide = counts[0] + counts[1], lightSide = counts[N - 1] + counts[N - 2];
-      $('h-revealinfo').innerHTML = '<b>תפסנו אתכם!</b> כל הפסים זהים לגמרי.<br>על רקע כהה פס נראה בהיר יותר, ועל רקע בהיר הוא נראה כהה יותר.<br>בחרו בקצה הכהה: <b>' + darkSide + '</b> · בקצה הבהיר: <b>' + lightSide + '</b>';
+      const darkSide = counts[0] + counts[1];
+      $('h-revealinfo').innerHTML = 'הפס השונה באמת: <b>פס ' + (q.odd + 1) + '</b>, בהיר יותר מהשאר.<br>על הרקע הבהיר הוא נראה כהה, ולכן הוסתר.<br>צדקו: <b>' + pct + '%</b> · בחרו בקצה הכהה: <b>' + darkSide + '</b>';
     } else {
       $('h-revealinfo').innerHTML = 'התשובה: <b>פס ' + (q.odd + 1) + '</b><br>ההבדל היה ב<b>' + TYPE_NAME[q.type] + '</b><br>צדקו: <b>' + pct + '%</b> (' + okCount + ' מתוך ' + A.size + ')';
     }
@@ -601,8 +630,8 @@ function startHost() {
     $('h-typestats').innerHTML = th;
     const ti = H.qs.findIndex(q => q.trick);
     if (ti >= 0 && H.answers[ti].size) {
-      const A = H.answers[ti]; let f = 0; A.forEach(a => { if (a.c <= 1 || a.c >= N - 2) f++; });
-      $('h-trickstat').textContent = 'בשלב ההפתעה ' + Math.round(f / A.size * 100) + '% מהכיתה בחרו פס באחד הקצוות, הכהה או הבהיר, למרות שכל הפסים היו זהים.';
+      const A = H.answers[ti]; let f = 0, ok = 0; A.forEach(a => { if (a.c <= 1) f++; if (a.c === H.qs[ti].odd) ok++; });
+      $('h-trickstat').textContent = 'בשלב ההפתעה ' + Math.round(ok / A.size * 100) + '% מצאו את הפס המוסתר, ו־' + Math.round(f / A.size * 100) + '% בחרו פס בצד הכהה, שהיה זהה לשאר.';
     } else $('h-trickstat').textContent = '';
     H.players.forEach(p => send(p, { t:'end', rank:rankOf(p.pid), score:p.score, n:H.players.size }));
     show('#host .screen', 'h-end');
@@ -692,7 +721,8 @@ function startPlayer() {
     } else if (m.t === 'res') {
       P.curQ = -1; clearInterval(P.tick);
       pshow('p-res');
-      if (m.trick) { $('player').className = 'trick'; $('p-res-icon').textContent = '🤯'; $('p-res-title').textContent = 'תפסנו אתכם! כל הפסים היו זהים'; $('p-res-pts').textContent = ''; }
+      if (m.trick && m.ok) { $('player').className = 'ok'; $('p-res-icon').textContent = '🦅'; $('p-res-title').textContent = 'וואו! לא נפלת באשליה'; $('p-res-pts').textContent = '+' + m.pts; }
+      else if (m.trick) { $('player').className = 'trick'; $('p-res-icon').textContent = '🤯'; $('p-res-title').textContent = m.none ? 'הזמן נגמר' : 'האשליה הטעתה אותך! הפס השונה הוסתר'; $('p-res-pts').textContent = '+0'; }
       else if (m.ok) { $('player').className = 'ok'; $('p-res-icon').textContent = '✅'; $('p-res-title').textContent = 'נכון!'; $('p-res-pts').textContent = '+' + m.pts; }
       else { $('player').className = 'bad'; $('p-res-icon').textContent = m.none ? '⌛' : '❌'; $('p-res-title').textContent = m.none ? 'הזמן נגמר' : 'לא הפעם'; $('p-res-pts').textContent = '+0'; }
       $('p-res-rank').textContent = 'מקום ' + m.rank + ' מתוך ' + m.n + ' · סך הכול ' + m.score + ' נקודות';
