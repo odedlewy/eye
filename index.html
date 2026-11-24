@@ -443,12 +443,14 @@ function buildQuestions(perStage, bonus) {
 
 /* ================= צליל ================= */
 // מוזיקת רקע מקורית (קובץ music.ogg לצד הדף) וצלילים קצרים שהדפדפן מייצר. רק במחשב המורה.
-const SND = { ctx:null, master:null, music:null, buf:null, src:null, el:null, want:false, vol:0.5, muted:false };
+const SND = { ctx:null, master:null, music:null, buf:null, src:null, el:null, want:false, lvl:0, vol:0.5, muted:false };
+// עוצמת המוזיקה: חלשה ברקע כל הזמן, וחזקה יותר בזמן שאלה
+const MUSIC_BED = 0.3, MUSIC_Q = 0.8;
 try { const v = localStorage.getItem('ss-vol'); if (v !== null) SND.vol = +v; SND.muted = localStorage.getItem('ss-muted') === '1'; } catch(_){}
 function sndLevel() { return SND.muted ? 0 : Math.pow(SND.vol, 2); }
 function sndApply() {
   if (SND.master) SND.master.gain.setTargetAtTime(sndLevel(), SND.ctx.currentTime, 0.05);
-  if (SND.el) SND.el.volume = SND.want ? sndLevel() * 0.8 : 0;
+  if (SND.el) SND.el.volume = SND.want ? sndLevel() * SND.lvl : 0;
   const box = document.getElementById('snd');
   if (box) { box.classList.toggle('off', SND.muted); document.getElementById('snd-mute').textContent = SND.muted ? '🔇' : '🔊'; document.getElementById('snd-vol').value = Math.round(SND.vol * 100); }
   try { localStorage.setItem('ss-vol', SND.vol); localStorage.setItem('ss-muted', SND.muted ? '1' : '0'); } catch(_){}
@@ -461,24 +463,21 @@ function sndInit() {
   SND.music = SND.ctx.createGain(); SND.music.gain.value = 0; SND.music.connect(SND.master);
   fetch('music.ogg').then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
     .then(b => SND.ctx.decodeAudioData(b))
-    .then(buf => { SND.buf = buf; if (SND.want) musicOn(); })
+    .then(buf => { SND.buf = buf; if (SND.want) musicSet(SND.lvl); })
     .catch(() => { // קובץ שנפתח מהמחשב: נגן רגיל
-      try { SND.el = new Audio('music.ogg'); SND.el.loop = true; SND.el.volume = 0; if (SND.want) musicOn(); } catch(_){}
+      try { SND.el = new Audio('music.ogg'); SND.el.loop = true; SND.el.volume = 0; if (SND.want) musicSet(SND.lvl); } catch(_){}
     });
 }
-function musicOn() {
-  SND.want = true;
+function musicSet(level) {
+  SND.want = true; SND.lvl = level;
   if (SND.buf && SND.ctx) {
     if (!SND.src) { SND.src = SND.ctx.createBufferSource(); SND.src.buffer = SND.buf; SND.src.loop = true; SND.src.connect(SND.music); SND.src.start(); }
     SND.music.gain.cancelScheduledValues(SND.ctx.currentTime);
-    SND.music.gain.setTargetAtTime(0.8, SND.ctx.currentTime, 0.25);
+    SND.music.gain.setTargetAtTime(level, SND.ctx.currentTime, 0.4);
   } else if (SND.el) { SND.el.play().catch(() => {}); sndApply(); }
 }
-function musicOff() {
-  SND.want = false;
-  if (SND.music && SND.ctx) { SND.music.gain.cancelScheduledValues(SND.ctx.currentTime); SND.music.gain.setTargetAtTime(0, SND.ctx.currentTime, 0.3); }
-  if (SND.el) { SND.el.volume = 0; SND.el.pause(); }
-}
+function musicOn() { musicSet(MUSIC_Q); }   // בזמן שאלה
+function musicBed() { musicSet(MUSIC_BED); } // רקע שקט בכל שאר המסכים
 function blip(freq, len, gain, type) {
   if (!SND.ctx) return;
   const t = SND.ctx.currentTime, o = SND.ctx.createOscillator(), g = SND.ctx.createGain();
@@ -634,7 +633,7 @@ function startHost() {
   }
   function reveal() {
     if (H.phase !== 'question') return;
-    H.phase = 'reveal'; clearInterval(H.timer); musicOff();
+    H.phase = 'reveal'; clearInterval(H.timer); musicBed();
     const q = H.qs[H.qi], A = H.answers[H.qi];
     const counts = Array(N).fill(0);
     A.forEach((a, pid) => {
@@ -738,7 +737,7 @@ function startHost() {
     show('#host .screen', 'h-board');
   }
   function endGame() {
-    musicOff();
+    musicBed();
     H.phase = 'end'; clearInterval(H.timer);
     const r = ranked();
     const pod = $('h-podium'); pod.innerHTML = '';
@@ -782,13 +781,17 @@ function startHost() {
     show('#host .screen', 'h-end');
   }
   function backToLobby() {
-    musicOff();
+    musicBed();
     H.phase = 'lobby'; H.players.delete('solo'); H.players.forEach(p => { p.correct = 0; p.time = 0; });
     online().forEach(p => send(p, { t:'wait', name:p.name, lobby:true }));
     show('#host .screen', 'h-lobby'); renderPlayers();
   }
 
   $('h-start').onclick = () => { sndInit(); startGame(); };
+  // המוזיקה מתחילה ברקע מהלחיצה הראשונה של המורה בדף (דפדפנים לא מאפשרים צליל לפני כן)
+  const firstTouch = () => { sndInit(); if (!SND.want) musicBed(); };
+  document.addEventListener('pointerdown', firstTouch, { once:true });
+  document.addEventListener('keydown', firstTouch, { once:true });
   $('snd-mute').onclick = () => { sndInit(); SND.muted = !SND.muted; sndApply(); };
   $('snd-vol').oninput = e => { sndInit(); SND.vol = e.target.value / 100; if (SND.vol > 0) SND.muted = false; sndApply(); };
   sndApply();
